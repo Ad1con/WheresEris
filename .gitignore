@@ -1,0 +1,5 @@
+# Local config backups captured during development
+*.bak
+
+# Local build output
+/build/
