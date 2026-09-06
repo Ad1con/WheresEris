@@ -173,6 +173,22 @@ do
   check("3.12 but the ground marker is unaffected", G.attachedCount(plugin.GROUND_FX, eris.ObjectId) == 1)
 end
 
+do
+  -- SetupUnit firing twice on the same live unit must not stack a second
+  -- ground sprite -- CreateAnimation is not idempotent the way AddOutline is.
+  local G, plugin = boot()
+  local eris = G.spawnEris()
+  G.SetupUnit(eris, G.CurrentRun, {})
+  G.SetupUnit(eris, G.CurrentRun, {})
+  check("3.13 a second SetupUnit on the same unit does not stack the ground marker",
+        G.attachedCount(plugin.GROUND_FX, eris.ObjectId) == 1)
+  -- AddOutline is idempotent (an absolute set, not a stack -- see
+  -- MODDING_HADES2.md section 2), so this is a survives-a-second-call sanity
+  -- check rather than a count assertion: nothing here can observe whether
+  -- AddOutline was called once or twice, only that the outline still exists.
+  check("3.14 and the outline is still present", G.outlines[eris.ObjectId] ~= nil)
+end
+
 -- =============================================================================
 -- 4. Dream Dive doubling (WHERES_ERIS_SPEC.md section 5.3)
 -- =============================================================================

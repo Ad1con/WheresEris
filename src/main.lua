@@ -312,8 +312,8 @@ function CONFIG.resolvedGroundColor()
 end
 
 -- The landing marker's tint. Unlike the ground marker there is no "None":
--- the keepsake-face art (see GROUND_FX/LANDING_FX below) is a single portrait
--- rather than a plate meant to carry a color, but the setting still exists
+-- the keepsake-face art (see LANDING_ANIMATION_NAME below) is a single
+-- portrait rather than a plate meant to carry a color, but the setting exists
 -- and still tints it, in the same palette as the outline, so the family of
 -- colors stays consistent across every dial in this mod.
 function CONFIG.resolvedLandingColor()
@@ -420,11 +420,13 @@ local function attachOutline(game, enemy)
     game.AddOutline(CONFIG.resolvedOutline(enemy.ObjectId))
 end
 
-local function detachOutline(game, enemy)
-    if not settings.values.Outline then return end
-    if isDreamRun(game) and not settings.values.OutlineInDreamDives then return end
-    game.RemoveOutline({ Id = enemy.ObjectId })
-end
+-- No detachOutline: unlike RealHecate's clones, Eris is marked exactly once
+-- per fight (attachIdentifier runs once, from SetupUnit) and the outline is
+-- meant to stay on for the whole fight (WHERES_ERIS_SPEC.md section 5.2:
+-- "should stay on throughout"). There is no re-marking cycle that would ever
+-- need to strip it back off while she is alive, and on death the engine's own
+-- cleanup applies -- same reasoning watchIdentifier already uses for why it
+-- does not call StopAnimation there either.
 
 -- Ground marker attach/detach. Called at setup (grounded), and again on every
 -- landing/takeoff to hide it in flight -- see WHERES_ERIS_SPEC.md section 5.2:
@@ -479,9 +481,17 @@ function CONFIG.attachIdentifier(game, enemy)
     enemy[GENERATION_FIELD] = generation
     enemy[AIRBORNE_FIELD] = false
 
-    attachOutline(game, enemy)
-    attachGroundFx(game, enemy)
-    enemy[MARKED_FIELD] = true
+    -- Guard against attaching twice onto the same live unit: attachGroundFx's
+    -- CreateAnimation is NOT idempotent, so a second call would stack a
+    -- second sprite rather than replacing the first -- the same "accumulates"
+    -- hazard MODDING_HADES2.md section 2 warns about for re-run hooks.
+    -- SetupUnit only fires once per fight in practice, but this costs nothing
+    -- and RealHecate guards the equivalent case the same way.
+    if not enemy[MARKED_FIELD] then
+        attachOutline(game, enemy)
+        attachGroundFx(game, enemy)
+        enemy[MARKED_FIELD] = true
+    end
 
     logAlways(("marked Eris (id %s); outline %s/%s, ground %s/%s")
         :format(tostring(enemy.ObjectId),
@@ -898,6 +908,12 @@ end
 -- =============================================================================
 -- Boot
 -- =============================================================================
+
+-- Seeds Lua's OWN math.random, never the game's global RNG (see the header
+-- and WHERES_ERIS_SPEC.md section 6.2) -- pickSpot's choice among eligible
+-- spots must vary between sessions without ever touching the run's seed.
+-- Guarded because a sandboxed environment could plausibly remove os.time.
+pcall(function() math.randomseed(os.time()) end)
 
 loadSettings()
 

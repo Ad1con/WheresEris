@@ -42,6 +42,34 @@ RealHecate's own header warning about `FX_Terrain` silently filing an
 animation into a render group that never draws) or a different Animations
 file to hook, not a rewrite of the selection logic.
 
+## PreferredSpawnPointGroup -- traced and ruled out, not overlooked
+
+A review pass over the real `HandleEnemyTeleportation` call site
+(`EnemyAILogic.lua:1106`) noticed two fields this file's `eligibilityArgs`
+does not reconstruct: `PreferredSpawnPoint` and `PreferredSpawnPointGroup`,
+both read from `aiData`. `EnemyData_Eris.lua`'s stage 2 data does set
+`PreferredSpawnPointGroup = "SpawnPointsPhase2"`, which was worth chasing down
+rather than dismissing.
+
+It traced to nothing this mod needs to handle, for a specific reason worth
+recording so a future reader does not re-open it: that assignment lives
+inside stage 2's `EMStageDataOverrides`, and `StagedAI` only merges
+`EMStageDataOverrides` onto a stage at all when
+`IsBossDifficultyShrineUpgradeActive()` is true (`EnemyAILogic.lua:5615-5617`)
+-- the exact same oracle this mod already reads as `isBossDifficultyActive`.
+So `aiData.PreferredSpawnPointGroup` is only ever non-nil under the same
+condition that also sets `aiData.TeleportToSpawnPointType = "EnemyPointSupport"`
+(`WeaponData_Eris.lua`'s `ErisFlyDown` `ConditionalData`) -- and
+`SelectSpawnPoint`'s own branch order checks `RequiredSpawnPoint` (fed by
+`TeleportToSpawnPointType`) BEFORE `PreferredSpawnPointGroup`
+(`EncounterLogic.lua:1084` vs `:1097`, an `if`/`elseif` chain). Whenever
+`PreferredSpawnPointGroup` could possibly be set, `RequiredSpawnPoint` is
+already set too and wins the branch first. Outside the Oath shrine, neither
+field is ever populated for this weapon. The two-way branch this mod already
+has -- `EnemyPointSupport` under Oath, the whole map otherwise -- is therefore
+the complete answer for `ErisFlyDown` specifically, not a simplification of a
+more complex real rule.
+
 ## Why BossDifficultyActive is a test flag, not a ported function
 
 `test/harness.lua` ports `SelectSpawnPoint` and `IsSpawnPointEligible`
@@ -107,8 +135,24 @@ she is still near the ground on the way up.
 ## Sabotage log
 
 Every non-trivial test was sabotage-verified before shipping (`CONTRIBUTING.md`).
-Two results are worth keeping because they taught something rather than just
+Three results are worth keeping because they taught something rather than just
 confirming the obvious:
+
+- **`MARKED_FIELD` was written but never checked, found on a review pass
+  after the suite was already green.** `attachIdentifier` set it to `true`
+  unconditionally and nothing ever read it, so a second `SetupUnit` call on
+  the same live Eris would have stacked a second ground sprite --
+  `CreateAnimation` is not idempotent the way `AddOutline` is (see
+  MODDING_HADES2.md section 2's "accumulates" hazard). No test caught this
+  because no test called `SetupUnit` twice; the gap was invisible to the
+  suite until something looked for it rather than at it. Fixed by gating the
+  two attach calls on `not enemy[MARKED_FIELD]`, matching RealHecate's own
+  equivalent guard, and `test/run_tests.lua` 3.13/3.14 now calls `SetupUnit`
+  twice and asserts exactly one of each. A companion `detachOutline` function
+  was removed for the opposite reason: it also had no caller, but unlike the
+  missing guard, there was no scenario in this mod's design that needed one
+  (see "No detachOutline" above), so adding a test to justify keeping it would
+  have been testing dead code rather than fixing a gap.
 
 - **`isFlyDownTeleport`'s `SpawnNearId` clause needed its own direct test.**
   The first sabotage attempt removed only that clause (leaving the
