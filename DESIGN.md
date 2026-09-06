@@ -15,24 +15,19 @@ The landing marker's art is the game's own keepsake face for Eris
 `Game/Animations/GUI_Screens_VFX.sjson` and attached in the 3D world with
 `CreateAnimation`, the same way RealHecate attaches `ApolloGroundGlow`.
 
-The registration technique itself is confirmed: Adicon-SelectFirstBoon
-(published, 4.32.0) registers new Animation entries the same way -- FilePath
-naming an existing shipped texture, `EndFrame`/`NumFrames`/`StartFrame` = 1,
-`Material = "Unlit"` for a single static frame -- and it works. What is NOT
-independently confirmed is attaching one of those entries with
-`CreateAnimation` in the 3D world rather than `CreateScreenComponent` on a 2D
-screen. SelectFirstBoon's registered entries are all consumed by
-`CreateScreenComponent`; no mod on this machine has attached a GUI-atlas
-texture as a world sprite before this one. Both functions almost certainly
-resolve `Name` through the same underlying `Animations` table, which is why
-this is the design that was built rather than inventing a new one, but
-"almost certainly" is not "confirmed," and this is exactly the shape of gap
+The registration technique is confirmed: Adicon-SelectFirstBoon (published,
+4.32.0) registers new Animation entries the same way -- FilePath naming an
+existing shipped texture, `EndFrame`/`NumFrames`/`StartFrame` = 1, `Material =
+"Unlit"` -- and it works, but only via `CreateScreenComponent` on a 2D screen.
+No mod on this machine has attached a GUI-atlas texture with `CreateAnimation`
+in the 3D world before this one. Both functions likely resolve `Name` through
+the same `Animations` table, which is why this design was chosen over
+inventing a new one, but "likely" is not "confirmed" -- exactly the gap
 MODDING_HADES2.md section 3 rule 6 describes: the offline suite proves the
-LOGIC (which spot, when, whether it moves) exhaustively; it cannot see
-whether a texture renders. RealHecate's own history is the precedent --
-its marker not appearing at all was invisible to any offline test and cost
-roughly fifteen playtest cycles to run down, and that was for an animation
-technique that WAS already confirmed working elsewhere in that mod.
+logic (which spot, when, whether it moves) exhaustively and cannot see
+whether a texture renders. RealHecate's own history is the precedent: its
+marker not appearing cost roughly fifteen playtest cycles to run down, for an
+animation technique that was already confirmed working elsewhere in that mod.
 
 If the marker does not render: the wiring underneath it (which spot, correct
 eligibility, correct freeze-on-descent, correct RNG parity) is still doing its
@@ -138,21 +133,17 @@ Every non-trivial test was sabotage-verified before shipping (`CONTRIBUTING.md`)
 Three results are worth keeping because they taught something rather than just
 confirming the obvious:
 
-- **`MARKED_FIELD` was written but never checked, found on a review pass
-  after the suite was already green.** `attachIdentifier` set it to `true`
-  unconditionally and nothing ever read it, so a second `SetupUnit` call on
-  the same live Eris would have stacked a second ground sprite --
-  `CreateAnimation` is not idempotent the way `AddOutline` is (see
-  MODDING_HADES2.md section 2's "accumulates" hazard). No test caught this
-  because no test called `SetupUnit` twice; the gap was invisible to the
-  suite until something looked for it rather than at it. Fixed by gating the
-  two attach calls on `not enemy[MARKED_FIELD]`, matching RealHecate's own
-  equivalent guard, and `test/run_tests.lua` 3.13/3.14 now calls `SetupUnit`
-  twice and asserts exactly one of each. A companion `detachOutline` function
-  was removed for the opposite reason: it also had no caller, but unlike the
-  missing guard, there was no scenario in this mod's design that needed one
-  (see "No detachOutline" above), so adding a test to justify keeping it would
-  have been testing dead code rather than fixing a gap.
+- **`MARKED_FIELD` was written but never checked, found on a later review
+  pass.** `attachIdentifier` set it unconditionally and nothing read it, so a
+  second `SetupUnit` call on the same live Eris would have stacked a second
+  ground sprite -- `CreateAnimation` is not idempotent the way `AddOutline` is
+  (MODDING_HADES2.md section 2's "accumulates" hazard). No test caught it
+  because no test called `SetupUnit` twice. Fixed by gating both attach calls
+  on `not enemy[MARKED_FIELD]`, matching RealHecate's equivalent guard;
+  `test/run_tests.lua` 3.13/3.14 calls `SetupUnit` twice and asserts exactly
+  one of each. `detachOutline` was removed rather than wired in: it had no
+  caller either, but this mod's design (mark once, outline stays for the
+  whole fight) has no scenario that needs one.
 
 - **`isFlyDownTeleport`'s `SpawnNearId` clause needed its own direct test.**
   The first sabotage attempt removed only that clause (leaving the
