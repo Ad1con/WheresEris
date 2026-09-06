@@ -2,21 +2,18 @@
 
 **Outlines Eris and marks the spot she will land on, from takeoff to touchdown.**
 
-Eris gets a colored outline and a colored marker on the ground beneath her,
-in the same colors and settings as RealHecate so the two mods read as one
-family. When she flies up to bombard, a marker appears on the exact spot she
-will come back down on. The marker stays until she lands, moving only if
-where you are standing makes it stop being a legal landing spot.
+Eris gets a colored outline and a colored marker on the ground beneath her, in
+the same colors and settings as RealHecate. When she flies up to bombard, a
+marker appears on the spot she will land on and stays there until she does,
+moving only if your position makes it stop being a legal spot.
 
-Works in the ordinary fight, the Rivals bounty fight, and Dream Dives.
-Vanilla already outlines Eris in a Dream Dive; this mod's own outline is added
-on top of vanilla's by default, so a Dream fight reads as a heavier, more
-solid version of the same red rather than a second color.
+Works in the ordinary fight, the Rivals bounty fight, and Dream Dives. Vanilla
+already outlines Eris in a Dream Dive; this mod's own outline is added on top
+of vanilla's by default, so a Dream fight reads as a heavier, more solid
+version of the same red rather than a second color.
 
 This is a real change to the fight. Eris will land where this mod chose,
-taken from the same set of spots the game itself would have used. The game
-still rolls its own dice for everything else; see "How the landing marker
-works" below for exactly what that means for your run's seed.
+taken from the same set of spots the game itself would have used.
 
 ## Settings
 
@@ -45,37 +42,29 @@ exit, so changes made while it is running are discarded.
 **Colors** for `OutlineColor`, `GroundFxColor` and `LandingMarkerColor`:
 `Amber` `Ember` `Violet` `Gold` `Teal` `Cyan` `Green` `Magenta` `Red` `White`
 
-Red is the default for all three, matching RealHecate's own default and for
-the same reason: it is the strongest available contrast against this game's
-arena floors.
+Red is the default for all three: the strongest available contrast against
+this game's arena floors.
 
-## How the landing marker works
+## How it works
 
-Eris flies up, bombards from above, and teleports back down somewhere else.
-The game picks that spot at the instant she teleports, filtered by distance
-and line of sight to wherever you are standing at that moment. There is
-nothing to predict ahead of time. This mod instead chooses the spot itself,
-from the same set of spots the game's own rules would have allowed, and
-substitutes that choice for the game's.
+Eris teleports to a new spot at the instant she starts descending, chosen by
+the game from whichever of its own spawn points currently pass distance and
+line-of-sight checks against your position. That choice does not exist until
+the instant it happens, so this mod cannot predict it. Instead it chooses the
+spot itself, from the same eligible set the game's own rules would allow, and
+substitutes that choice for the game's. Every candidate is checked against
+the game's own `IsSpawnPointEligible` function; nothing here invents its own
+idea of a legal spot. The marker rechecks its spot ten times a second while
+she is airborne and freezes the instant she starts landing.
 
-Every candidate the marker could show you is checked against the game's own
-`IsSpawnPointEligible` function. Nothing here invents its own idea of a legal
-landing spot. If a spot on a summoned add's spawn point becomes occupied and
-squeezes out every option, the marker disappears rather than pointing
-somewhere Eris will not actually go, and Eris does not teleport at all. That
-is not a bug. It is what the vanilla fight already does under the Oath of
-the Underworld shrine, and this mod matches it.
+**This mod does not change your run's seed.** The game still rolls for where
+Eris lands, and that roll advances the random sequence exactly as it would
+without the mod. What changes is which of the legal spots gets used.
 
-**This mod does not change your run's seed.** The game still makes its own
-roll for where Eris lands, and the random sequence advances exactly as it
-would without the mod installed. What the mod changes is which of the
-landing spots the game considers legal actually gets used. It always picks
-one the game itself would have accepted at that moment.
-
-The marker rechecks its spot ten times a second while Eris is airborne. It
-holds still as long as the spot stays legal, and moves to a new legal spot
-the instant it does not. Once she starts descending, whatever the marker is
-showing is where she lands.
+If a summoned add is standing on the last free spawn point and squeezes out
+every option, the marker disappears and Eris does not teleport at all. That
+is what the vanilla fight already does under the Oath of the Underworld
+shrine; this mod matches it rather than working around it.
 
 ## Compatibility
 

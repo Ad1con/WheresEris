@@ -5,20 +5,18 @@
 -- vocabulary and palette. Goal 2: a bullseye on the spot she will land on,
 -- from takeoff to touchdown. See WHERES_ERIS_SPEC.md (one level up, not
 -- shipped) for the design brief; DESIGN.md (repo root, not shipped) for the
--- rationale below.
+-- rationale behind every decision below.
 --
 -- Eris exists twice in the scripts (EnemyData_Eris.lua's boss "Eris" and
 -- NPCData_Eris.lua's "NPC_Eris_01"). Every hook is scoped to
--- `enemy.Name == "Eris"`, never a bare string match, the way RealHecate
--- guards with `hecate.Name ~= "Hecate"`.
+-- `enemy.Name == "Eris"`, never a bare string match.
 --
 -- Facts, verified against the shipped scripts, that force this file's shape:
 --
 --   * `ErisFlyUp`/`ErisFlyUp_P4` and `ErisFlyDown` are named weapons.
 --     `DoWeaponFire` (EnemyAILogic.lua:3923) stamps `aiData.WeaponName` with
 --     whichever fired (`GetWeaponAIData`, :5949-5970), so wrapping that one
---     function reports takeoff and landing directly -- no polling needed for
---     the transition itself.
+--     function reports takeoff and landing directly.
 --   * The landing spot does not exist until the instant of the teleport.
 --     `HandleEnemyTeleportation` (:1086) calls `SelectSpawnPoint`
 --     (EncounterLogic.lua:1071), which shuffles and takes the first id that
@@ -26,9 +24,7 @@
 --     that same eligible set, then substituted for vanilla's own pick.
 --   * `SelectSpawnPoint` shuffles with the run's own seeded RNG, so it must
 --     always run for real first -- consuming exactly vanilla's draws -- with
---     only its RESULT discarded. This mod's own picking touches
---     `IsSpawnPointEligible` only (no RNG) and chooses with Lua's own
---     `math.random`, never the game's global one. See DESIGN.md.
+--     only its RESULT discarded. See DESIGN.md.
 --   * The fly-down teleport is scoped by shape, not guessed: the real call
 --     (EnemyAILogic.lua:1105) carries `args.RequireLoS`/`LoSTarget` and a
 --     `SpawnNearId` aimed at the hero. Her own summons call the same
@@ -51,49 +47,37 @@ local sjson = mods["SGG_Modding-SJSON"]
 
 local LOG_PREFIX = "[WheresEris] "
 
--- Namespaced fields stashed on the live enemy table, per MODDING_HADES2.md's
--- "namespace state on shared objects" rule -- these are the only things this
--- mod ever writes onto a game object, and none of them outlive the fight
--- (see DESIGN.md, "uninstall risk").
+-- Namespaced fields stashed on the live enemy table. None outlive the fight.
 local MARKED_FIELD = "WheresEris_Marked"
 local GENERATION_FIELD = "WheresEris_Generation"
 local AIRBORNE_FIELD = "WheresEris_Airborne"
 local LANDING_GENERATION_FIELD = "WheresEris_LandingGeneration"
 local LANDING_SPOT_FIELD = "WheresEris_LandingSpotId"
 
--- The two takeoff weapons -- ErisFlyUp_P4 (WeaponData_Eris.lua:1520) is
--- ErisFlyUp with MaxUses = 1, used on her fourth phase; both stamp
--- aiData.WeaponName with their own key, not their InheritFrom base.
+-- ErisFlyUp_P4 (WeaponData_Eris.lua:1520) is ErisFlyUp with MaxUses = 1, used
+-- on her fourth phase; both stamp aiData.WeaponName with their own key.
 local FLY_UP_WEAPONS = { ErisFlyUp = true, ErisFlyUp_P4 = true }
 local FLY_DOWN_WEAPON = "ErisFlyDown"
 
 -- ErisFlyDown never sets TeleportMaxDistance, so HandleEnemyTeleportation's
 -- own default applies (EnemyAILogic.lua:1105: `aiData.TeleportMaxDistance or
--- 1000`). Reproduced here rather than guessed at because it is the radius our
--- own candidate search must match exactly, or it disagrees with vanilla about
--- what is reachable.
+-- 1000`). Must match exactly, or this mod's candidate search disagrees with
+-- vanilla about what is reachable.
 local TELEPORT_RADIUS = 1000
 
--- How often the landing marker rechecks whether its current spot is still
--- eligible. RealHecate's proven cadence is 0.25s; this starts faster because
--- each poll here costs one IsSpawnPointEligible call (a distance and a line
--- of sight check), not a scan of every point -- see WHERES_ERIS_SPEC.md
--- section 6.6. Back off toward 0.25 if a playtest shows it costing frames.
+-- Poll cadence for the landing marker. See DESIGN.md and
+-- WHERES_ERIS_SPEC.md section 6.6 for why 0.1s and when to back off.
 local LANDING_POLL_INTERVAL = 0.1
 
--- How often the outline/ground-marker watcher checks whether Eris is still
--- alive, so it can detach on death. Matches RealHecate's own cadence; nothing
--- here is time-critical the way the landing poll is.
+-- Poll cadence for the death-cleanup watcher. Not time-critical.
 local IDENTIFIER_POLL_INTERVAL = 0.25
 
 -- =============================================================================
 -- Logging
 -- =============================================================================
 
--- Deliberately rom.log.info for warnings too. In this ReturnOfModding build
--- rom.log.error RAISES rather than logs, so reporting a handled failure
--- through it turns that failure fatal. Severity is carried in the text
--- instead.
+-- rom.log.error RAISES in this build rather than logging, so warnings go
+-- through rom.log.info too.
 local function logAlways(message)
     if rom and rom.log and rom.log.info then
         rom.log.info(LOG_PREFIX .. tostring(message))
@@ -112,9 +96,7 @@ end
 
 local CONFIG = {}
 
--- Lifted verbatim from Adicon-RealHecate's own palette (src/main.lua:101-112),
--- per WHERES_ERIS_SPEC.md section 5.1: same names, same numbers, so the two
--- mods' color pickers mean the same thing.
+-- Palette lifted verbatim from Adicon-RealHecate (src/main.lua:101-112).
 CONFIG.colors = {
     Amber   = { 1.00, 0.45, 0.08 },
     Ember   = { 1.00, 0.30, 0.05 },
@@ -131,8 +113,7 @@ CONFIG.colors = {
 CONFIG.colorOrder = { "Amber", "Ember", "Violet", "Gold", "Teal",
                       "Cyan", "Green", "Magenta", "Red", "White" }
 
--- The ground marker additionally accepts None, meaning "leave the art its own
--- gold-orange" -- same convention as RealHecate's GroundFxColor.
+-- Ground marker only: None leaves the art its own gold-orange.
 CONFIG.groundColorOrder = { "None" }
 for _, name in ipairs(CONFIG.colorOrder) do
     CONFIG.groundColorOrder[#CONFIG.groundColorOrder + 1] = name
@@ -142,7 +123,6 @@ local settings = {
     values = {
         Enabled = true,
 
-        -- Goal 1: identify her.
         Outline = true,
         OutlineColor = "Red",
         OutlineThickness = 6,
@@ -150,12 +130,10 @@ local settings = {
         GroundFx = true,
         GroundFxColor = "Red",
         GroundFxScale = 3.0,
-        -- Vanilla already outlines her in a Dream Dive (EnemyData_Eris.lua:281,
-        -- gated PathTrue IsDreamRun). Caleb's decision: double up, behind its
-        -- own setting, rather than replace vanilla's -- see DESIGN.md.
+        -- Vanilla already outlines her in a Dream Dive (EnemyData_Eris.lua:281).
+        -- This doubles up behind its own setting rather than replacing it.
         OutlineInDreamDives = true,
 
-        -- Goal 2: where she is landing.
         LandingMarker = true,
         LandingMarkerColor = "Red",
         LandingMarkerScale = 3.0,
@@ -196,10 +174,6 @@ local function sectionFor(key)
     return "General (applies at next fight)"
 end
 
--- These are the primitives Chalk itself is built on: bind a key with a
--- default, read it with :get(), write it with :set(), flush with :save().
--- House style across all four mods in this family -- see
--- MODDING_HADES2.md section 0 item 4.
 local function loadSettings()
     local ok, err = pcall(function()
         if rom.config == nil or rom.config.config_file == nil then
@@ -255,8 +229,6 @@ local function saveSetting(key, value)
     end
 end
 
--- A hand-edited .cfg can hold anything. Resolve to a known preset rather than
--- letting a typo produce a nil color and an invisible marker.
 local function resolveColor(chosen, label)
     local rgb = CONFIG.colors[chosen]
     if rgb == nil then
@@ -266,8 +238,7 @@ local function resolveColor(chosen, label)
     return rgb
 end
 
--- AddOutline takes 0-255 channels; the presets are stored in 0-1. The single
--- place the conversion happens, same as RealHecate.
+-- AddOutline/CreateAnimation take 0-255 channels; the presets are 0-1.
 local function colorTo255(rgb)
     return math.floor(rgb[1] * 255 + 0.5),
            math.floor(rgb[2] * 255 + 0.5),
@@ -282,8 +253,6 @@ local function clamp(value, low, high, fallback)
     return n
 end
 
--- Everything AddOutline needs, resolved from settings. Read fresh at each
--- attach rather than cached, so the dials are live.
 function CONFIG.resolvedOutline(objectId)
     local r, g, b = colorTo255(resolveColor(settings.values.OutlineColor, "outline"))
     return {
@@ -291,14 +260,10 @@ function CONFIG.resolvedOutline(objectId)
         R = r, G = g, B = b,
         Opacity = clamp(settings.values.OutlineOpacity, 0, 1, 1.0),
         Thickness = clamp(settings.values.OutlineThickness, 1, 10, 6),
-        -- Left constant, matching RealHecate: every outline in the game uses
-        -- 0.6 and there is no vanilla precedent for any other value.
-        Threshold = 0.6,
+        Threshold = 0.6, -- every vanilla outline uses this; no precedent for anything else
     }
 end
 
--- The ground marker's tint as {R, G, B, A} in 0-255, or nil to leave the art
--- its own color. Same mechanism as RealHecate's resolvedGroundColor.
 function CONFIG.resolvedGroundColor()
     local name = settings.values.GroundFxColor
     if name == nil or name == "None" then return nil end
@@ -311,11 +276,6 @@ function CONFIG.resolvedGroundColor()
     return { r, g, b, 255 }
 end
 
--- The landing marker's tint. Unlike the ground marker there is no "None":
--- the keepsake-face art (see LANDING_ANIMATION_NAME below) is a single
--- portrait rather than a plate meant to carry a color, but the setting exists
--- and still tints it, in the same palette as the outline, so the family of
--- colors stays consistent across every dial in this mod.
 function CONFIG.resolvedLandingColor()
     local r, g, b = colorTo255(resolveColor(settings.values.LandingMarkerColor, "landing marker"))
     return { r, g, b, 255 }
@@ -324,38 +284,18 @@ end
 -- =============================================================================
 -- Art
 -- =============================================================================
--- Goal 1's ground marker reuses vanilla's own ApolloGroundGlow sprite, tinted
--- -- exactly RealHecate's technique (src/main.lua:385-389), no new art
--- registered. It is a ground SPRITE rather than a light for the same reason
--- RealHecate uses one: a light adds to whatever the floor already is and can
--- clip toward white, where a sprite carries its own art.
+-- Ground marker: vanilla's own ApolloGroundGlow sprite, tinted (RealHecate's
+-- technique, src/main.lua:385-389). No new art registered.
 local GROUND_FX = "ApolloGroundGlow"
 
--- Goal 2's landing marker needs art vanilla never uses as a ground sprite:
--- her own keepsake face (WHERES_ERIS_SPEC.md section 6.7), already shipped
--- inside GUI.pkg at GUI\Screens\AwardMenu\KeepsakeMaxGift\KeepsakeMaxGift_big
--- \Eris and extracted only to look at, never to re-ship (see
--- _icon-candidates/README.md, "shipped game assets only").
---
--- Registering a NEW Animation entry that points at an existing shipped
--- texture is the same technique SelectFirstBoon ships and has published: its
--- custom tab icons are registered via sjson.hook on
--- Game/Animations/GUI_Screens_VFX.sjson with FilePath naming an existing GUI
--- texture, EndFrame/NumFrames/StartFrame = 1, Material = "Unlit" (a single
--- static frame, not a real animation). That path is confirmed working for
--- CreateScreenComponent (a 2D UI element). Using the SAME registered entry
--- with CreateAnimation to attach it in the 3D world, the way RealHecate
--- attaches ApolloGroundGlow, is the natural extension of a working technique
--- but is NOT independently confirmed -- no mod on this machine has attached a
--- GUI-atlas texture as a world sprite before. This is flagged in DESIGN.md as
--- the one piece of this mod that needs Caleb's playtest before anything else,
--- exactly the shape of risk RealHecate's own history warns about (section 3
--- rule 6: the harness cannot see whether art actually renders).
+-- Landing marker: her keepsake face, already shipped inside GUI.pkg. Registered
+-- as a new Animation entry pointing at that existing texture -- see DESIGN.md
+-- for the technique and its one open risk (confirmed for CreateScreenComponent,
+-- not yet for CreateAnimation in the 3D world).
 local LANDING_ANIMATION_NAME = "WheresEris_LandingMarker"
 local LANDING_TEXTURE_PATH = [[GUI\Screens\AwardMenu\KeepsakeMaxGift\KeepsakeMaxGift_big\Eris]]
 local LANDING_ANIMATIONS_FILE = "Game/Animations/GUI_Screens_VFX.sjson"
 
--- Registered once, at load, guarded the same way installHooks is (see Boot).
 local function registerLandingArt()
     if sjson == nil or type(sjson.hook) ~= "function" then
         logWarn("SGG_Modding-SJSON unavailable; the landing marker will not be visible")
@@ -368,8 +308,6 @@ local function registerLandingArt()
 
     local ok, err = pcall(function()
         local animFile = rom.path.combine(rom.paths.Content, LANDING_ANIMATIONS_FILE)
-        -- Key order mirrors SelectFirstBoon's own registered entries, which
-        -- mirror the vanilla ones in this same file.
         local order = { "Name", "FilePath", "EndFrame", "NumFrames", "StartFrame", "Material" }
         local entry = (sjson.to_object and sjson.to_object({
             Name = LANDING_ANIMATION_NAME,
@@ -401,10 +339,8 @@ end
 -- Goal 1 -- the identifier
 -- =============================================================================
 
--- True unless this mod should leave Eris untouched: master switch, and the
--- unit-identity guard from WHERES_ERIS_SPEC.md section 3 (never match on the
--- bare string "Eris" anywhere else -- EnemyData_Eris.lua:3103's
--- ObjectTypes = {"Eris","NPC_Eris_01"} matches both units by name alone).
+-- EnemyData_Eris.lua:3103's ObjectTypes = {"Eris","NPC_Eris_01"} matches both
+-- units by name alone, so this scopes to the boss specifically.
 local function isEris(enemy)
     return enemy ~= nil and enemy.Name == "Eris"
 end
@@ -420,18 +356,9 @@ local function attachOutline(game, enemy)
     game.AddOutline(CONFIG.resolvedOutline(enemy.ObjectId))
 end
 
--- No detachOutline: unlike RealHecate's clones, Eris is marked exactly once
--- per fight (attachIdentifier runs once, from SetupUnit) and the outline is
--- meant to stay on for the whole fight (WHERES_ERIS_SPEC.md section 5.2:
--- "should stay on throughout"). There is no re-marking cycle that would ever
--- need to strip it back off while she is alive, and on death the engine's own
--- cleanup applies -- same reasoning watchIdentifier already uses for why it
--- does not call StopAnimation there either.
+-- No detachOutline: she is marked once per fight and the outline stays on for
+-- the whole fight. See DESIGN.md.
 
--- Ground marker attach/detach. Called at setup (grounded), and again on every
--- landing/takeoff to hide it in flight -- see WHERES_ERIS_SPEC.md section 5.2:
--- a sprite parented to her would ride up and read as a floating disc; one
--- pinned to the floor sits under empty air while she bombards from Z=800.
 local function attachGroundFx(game, enemy)
     if not settings.values.GroundFx then return end
     local args = {
@@ -452,17 +379,13 @@ local function detachGroundFx(game, enemy)
     })
 end
 
--- Runs as a game thread for as long as Eris is alive, purely to detach the
--- markers on death -- there is no other clean signal for "the fight ended."
--- Same shape as RealHecate's watchClones: a generation guard retires a
--- superseded watcher (there is one of these per SetupUnit call, i.e. one per
--- fight -- O_Boss01 and O_Boss02 each get their own).
+-- Polls for as long as Eris is alive, purely to detach on death -- there is no
+-- other clean signal for "the fight ended." Generation guard retires a
+-- superseded watcher (one per fight: O_Boss01 and O_Boss02 each get their own).
 local function watchIdentifier(game, enemy, generation)
     while true do
         if enemy[GENERATION_FIELD] ~= generation then return end
         if game.ActiveEnemies == nil or game.ActiveEnemies[enemy.ObjectId] == nil then
-            -- She is dead or the room is gone. DieWithOwner has already taken
-            -- any attached art; nothing left to detach.
             enemy[MARKED_FIELD] = false
             return
         end
@@ -470,9 +393,8 @@ local function watchIdentifier(game, enemy, generation)
     end
 end
 
--- Called after SetupUnit has returned (ActivatePrePlaced threads it,
--- EventLogic.lua:127, once per fight -- O_Boss01 and O_Boss02 are separate
--- rooms with separate pre-placed instances).
+-- Called after SetupUnit returns (ActivatePrePlaced threads it,
+-- EventLogic.lua:127, once per fight).
 function CONFIG.attachIdentifier(game, enemy)
     if not isEris(enemy) or enemy.ObjectId == nil then return end
     if not settings.values.Enabled then return end
@@ -481,12 +403,8 @@ function CONFIG.attachIdentifier(game, enemy)
     enemy[GENERATION_FIELD] = generation
     enemy[AIRBORNE_FIELD] = false
 
-    -- Guard against attaching twice onto the same live unit: attachGroundFx's
-    -- CreateAnimation is NOT idempotent, so a second call would stack a
-    -- second sprite rather than replacing the first -- the same "accumulates"
-    -- hazard MODDING_HADES2.md section 2 warns about for re-run hooks.
-    -- SetupUnit only fires once per fight in practice, but this costs nothing
-    -- and RealHecate guards the equivalent case the same way.
+    -- Guards against a double SetupUnit stacking a second ground sprite --
+    -- CreateAnimation is not idempotent the way AddOutline is.
     if not enemy[MARKED_FIELD] then
         attachOutline(game, enemy)
         attachGroundFx(game, enemy)
@@ -505,13 +423,10 @@ end
 -- Goal 2 -- the landing marker
 -- =============================================================================
 
--- True only for the exact call WHERES_ERIS_SPEC.md section 6.3 describes: the
--- fly-down teleport, not a spawn. Verified against the real call
--- (EnemyAILogic.lua:1105): args carries RequireLoS/LoSTarget, and the third
--- positional table's SpawnNearId is the hero. The summon path
--- (HandleSpawnerBurst's SpawnOnSpawnPoints branch, EnemyAILogic.lua:4869-4871)
--- sets neither -- its args table is only { RecursiveWait = 0.03 } -- so it
--- always falls through untouched.
+-- Matches the exact call shape HandleEnemyTeleportation uses for ErisFlyDown
+-- (EnemyAILogic.lua:1105): RequireLoS/LoSTarget set, SpawnNearId aimed at the
+-- hero. Her summons call SelectSpawnPoint too (HandleSpawnerBurst,
+-- EnemyAILogic.lua:4869) but set neither, so they fall through untouched.
 function CONFIG.isFlyDownTeleport(game, enemy, encounter, args)
     if not isEris(enemy) then return false end
     if type(args) ~= "table" or not args.RequireLoS or args.LoSTarget == nil then
@@ -522,13 +437,9 @@ function CONFIG.isFlyDownTeleport(game, enemy, encounter, args)
     return type(encounter) == "table" and encounter.SpawnNearId == hero.ObjectId
 end
 
--- True when the Oath/Vow shrine is active, which restricts her landing spots
--- to EnemyPointSupport (WHERES_ERIS_SPEC.md section 4.2). Read with the same
--- interpreter GetWeaponAIData itself uses to resolve ErisFlyDown's own
--- ConditionalData (EnemyAILogic.lua:5956-5961: `IsGameStateEligible( enemy,
--- conditionalData.GameStateRequirements)` against
--- `{ NamedRequirements = { "BossDifficultyActive" } }`) -- not re-derived,
--- read the same way vanilla reads it.
+-- Oath/Vow shrine active: restricts landing spots to EnemyPointSupport. Read
+-- the same way ErisFlyDown's own ConditionalData reads it
+-- (EnemyAILogic.lua:5956-5961), not re-derived.
 local function isBossDifficultyActive(game, enemy)
     if type(game.IsGameStateEligible) ~= "function" then return false end
     local ok, result = pcall(game.IsGameStateEligible, enemy, { NamedRequirements = { "BossDifficultyActive" } })
@@ -536,12 +447,8 @@ local function isBossDifficultyActive(game, enemy)
 end
 
 -- The candidate pool SelectSpawnPoint itself would shuffle from
--- (EncounterLogic.lua:1083-1110): GetIdsByType({Name="EnemyPointSupport"})
--- under the Oath shrine, or the room's whole MapState.SpawnPoints otherwise --
--- vanilla only narrows to a named type when RequiredSpawnPoint is set, which
--- happens only under BossDifficultyActive. Read from the live game rather
--- than hardcoded, so a map change moves this mod's pool exactly as it moves
--- vanilla's.
+-- (EncounterLogic.lua:1083-1110). See DESIGN.md for why PreferredSpawnPointGroup
+-- does not also need handling here.
 local function candidateIds(game, oath)
     local out = {}
     if oath then
@@ -555,11 +462,9 @@ local function candidateIds(game, oath)
     return out
 end
 
--- The exact eligibility args HandleEnemyTeleportation builds for ErisFlyDown
--- (EnemyAILogic.lua:1105-1106), reconstructed independently so this mod can
--- ask the question before the teleport itself happens. RequiredSpawnPoint is
--- included so a summon squeeze that empties EnemyPointSupport is judged the
--- same way vanilla would judge it (WHERES_ERIS_SPEC.md section 4.4/6.4).
+-- The eligibility args HandleEnemyTeleportation builds for ErisFlyDown
+-- (EnemyAILogic.lua:1105-1106), reconstructed so this mod can ask the
+-- question before the real teleport call happens.
 local function eligibilityArgs(game, enemy, oath)
     local hero = game.CurrentRun and game.CurrentRun.Hero
     local heroId = hero and hero.ObjectId
@@ -573,9 +478,8 @@ local function eligibilityArgs(game, enemy, oath)
     return encounter, args
 end
 
--- Builds the eligible list with the REAL IsSpawnPointEligible (no RNG
--- touched, per WHERES_ERIS_SPEC.md section 6.2) and returns it, or an empty
--- table if nothing is eligible right now -- the §4.4/§6.4 corner case.
+-- Real IsSpawnPointEligible only -- no RNG touched. Empty if nothing is
+-- eligible right now (the summon-squeeze corner case).
 local function eligibleSpots(game, enemy)
     local currentRoom = game.CurrentRun and game.CurrentRun.CurrentRoom
     if currentRoom == nil or type(game.IsSpawnPointEligible) ~= "function" then return {} end
@@ -594,9 +498,8 @@ local function eligibleSpots(game, enemy)
     return eligible
 end
 
--- Our own random source, never the game's global RNG (WHERES_ERIS_SPEC.md
--- section 6.2) -- picking here must not move the seed the run's boons and
--- rooms are drawn from.
+-- Our own random source, never the game's global RNG -- picking here must not
+-- move the seed the run's boons and rooms are drawn from.
 local function pickSpot(game, enemy)
     local eligible = eligibleSpots(game, enemy)
     if #eligible == 0 then return nil end
@@ -622,9 +525,6 @@ local function detachLandingMarker(game, spotId)
     })
 end
 
--- Moves the marker to a freshly picked spot, detaching the old one first.
--- Returns the new spot id, or nil if nothing is eligible right now (hides the
--- marker rather than leaving it on a spot that has gone illegal).
 local function moveMarkerTo(game, enemy, newSpot)
     local old = enemy[LANDING_SPOT_FIELD]
     if old ~= nil and old ~= newSpot then
@@ -637,12 +537,9 @@ local function moveMarkerTo(game, enemy, newSpot)
     return newSpot
 end
 
--- Runs as a game thread from takeoff to landing. Polls at
--- LANDING_POLL_INTERVAL; if the current spot still passes
--- IsSpawnPointEligible, it is left alone; otherwise a fresh spot is picked
--- and the marker moves. Ends on landing (the generation bump in onFlyDown),
--- on death, or when a newer takeoff supersedes it -- same belt-and-braces
--- shape as RealHecate's watchClones.
+-- Runs from takeoff to landing. Leaves an eligible spot alone; moves an
+-- ineligible one. Ends on landing (generation bump in onFlyDown), on death,
+-- or when a newer takeoff supersedes it.
 local function watchLanding(game, enemy, generation)
     while true do
         if enemy[LANDING_GENERATION_FIELD] ~= generation then return end
@@ -669,7 +566,6 @@ local function watchLanding(game, enemy, generation)
     end
 end
 
--- Called from the DoWeaponFire wrap when Eris fires ErisFlyUp/ErisFlyUp_P4.
 function CONFIG.onFlyUp(game, enemy)
     enemy[AIRBORNE_FIELD] = true
 
@@ -685,10 +581,8 @@ function CONFIG.onFlyUp(game, enemy)
     game.thread(watchLanding, game, enemy, generation)
 end
 
--- Called from the DoWeaponFire wrap when Eris fires ErisFlyDown. Freezes the
--- landing marker (WHERES_ERIS_SPEC.md section 6.1 step 4: whatever it shows
--- is the destination) by retiring the watcher, and restores the ground
--- marker now that she is grounded again.
+-- Freezes the landing marker (whatever it shows is the destination) by
+-- retiring the watcher, and restores the ground marker.
 function CONFIG.onFlyDown(game, enemy)
     enemy[AIRBORNE_FIELD] = false
     enemy[LANDING_GENERATION_FIELD] = (enemy[LANDING_GENERATION_FIELD] or 0) + 1
@@ -698,10 +592,8 @@ function CONFIG.onFlyDown(game, enemy)
     end
 end
 
--- Called when the wrapped SelectSpawnPoint's REAL result is nil for the
--- fly-down teleport -- vanilla found nowhere to send her
--- (WHERES_ERIS_SPEC.md section 6.4). Hides the marker rather than leaving it
--- somewhere she will not actually go.
+-- Vanilla found nowhere to send her either. Hide the marker rather than
+-- leaving it somewhere she will not go.
 function CONFIG.onNoLanding(game, enemy)
     moveMarkerTo(game, enemy, nil)
 end
@@ -717,10 +609,7 @@ local function installHooks(game)
         return false
     end
 
-    -- Goal 1: attach the outline/ground marker once, when she is set up.
-    -- ActivatePrePlaced threads SetupUnit for every pre-placed unit it
-    -- activates (EventLogic.lua:127), including Eris in both O_Boss01 and
-    -- O_Boss02 -- one call per fight.
+    -- Goal 1: attach once, when she is set up (EventLogic.lua:127).
     ModUtil.Path.Wrap("SetupUnit", function(base, unit, currentRun, args)
         base(unit, currentRun, args)
         if not isEris(unit) or not settings.values.Enabled then return end
@@ -730,10 +619,8 @@ local function installHooks(game)
         end
     end)
 
-    -- Goal 1 (hide/restore) and goal 2 (pick/freeze): both keyed off which
-    -- weapon just fired. DoWeaponFire stamps aiData.WeaponName
-    -- (GetWeaponAIData, EnemyAILogic.lua:5970) with the exact weapon key, so
-    -- one wrap here covers both takeoff and landing for both features.
+    -- Goals 1 (hide/restore) and 2 (pick/freeze), both keyed off which weapon
+    -- fired via aiData.WeaponName.
     ModUtil.Path.Wrap("DoWeaponFire", function(base, enemy, aiData)
         base(enemy, aiData)
         if not isEris(enemy) or not settings.values.Enabled then return end
@@ -748,10 +635,8 @@ local function installHooks(game)
         end
     end)
 
-    -- Goal 2's RNG-parity substitution (WHERES_ERIS_SPEC.md section 6.2/6.3).
-    -- base() runs FIRST and unconditionally, so it consumes exactly the
-    -- draws vanilla would from the run's seeded RNG, whether or not this mod
-    -- ends up using its result.
+    -- RNG-parity substitution. base() runs FIRST and unconditionally, so it
+    -- consumes exactly the draws vanilla would; see DESIGN.md.
     ModUtil.Path.Wrap("SelectSpawnPoint", function(base, currentRoom, enemy, encounter, args, depth)
         local real = base(currentRoom, enemy, encounter, args, depth)
 
@@ -759,8 +644,7 @@ local function installHooks(game)
         if not CONFIG.isFlyDownTeleport(game, enemy, encounter, args) then return real end
 
         if real == nil then
-            -- Vanilla found nowhere to send her either. Never substitute a
-            -- spot where vanilla had none (section 6.4).
+            -- Never substitute a spot where vanilla had none.
             local ok, err = pcall(CONFIG.onNoLanding, game, enemy)
             if not ok then logWarn("could not clear the landing marker: " .. tostring(err)) end
             return nil
@@ -774,9 +658,7 @@ local function installHooks(game)
             end
         end
 
-        -- Our own tracked spot is missing or went stale since the last poll.
-        -- Fall back to vanilla's own real pick rather than inventing one --
-        -- never worse than not having the mod installed.
+        -- Tracked spot missing or stale -- fall back to vanilla's real pick.
         return real
     end)
 
@@ -821,10 +703,8 @@ local function renderWindow()
         imgui.SetNextWindowSize(430, 480, cond)
     end
 
-    -- Begin is OUTSIDE the pcall and End follows it unconditionally -- a
-    -- raise anywhere in the body must not skip End and leave ImGui with an
-    -- unclosed window, corrupting the overlay for every mod, not just this
-    -- one (see RealHecate's own comment and test 10c.7 on this exact shape).
+    -- Begin is OUTSIDE the pcall and End follows it unconditionally -- a raise
+    -- in the body must not skip End and leave ImGui's window stack corrupted.
     local shouldDraw = imgui.Begin("WheresEris")
 
     local ok, err = pcall(function()
@@ -909,17 +789,14 @@ end
 -- Boot
 -- =============================================================================
 
--- Seeds Lua's OWN math.random, never the game's global RNG (see the header
--- and WHERES_ERIS_SPEC.md section 6.2) -- pickSpot's choice among eligible
--- spots must vary between sessions without ever touching the run's seed.
--- Guarded because a sandboxed environment could plausibly remove os.time.
+-- Seeds Lua's own math.random (never the game's global RNG) so pickSpot's
+-- choice varies between sessions.
 pcall(function() math.randomseed(os.time()) end)
 
 loadSettings()
 
--- Runs ONCE. Anything here that ran twice would double up: a second
--- ModUtil.Path.Wrap would nest another wrapper around the same three
--- functions, and a second sjson.hook would register the landing art twice.
+-- Runs ONCE. Anything here that ran twice would double up: a second wrap or a
+-- second sjson.hook.
 local function on_ready(game)
     local artOk = false
     if settings.values.Enabled and settings.values.LandingMarker then
@@ -937,11 +814,9 @@ local function on_ready(game)
     end
 end
 
--- Runs on load AND on every hot reload, so it must be safe to repeat. Only
--- re-reads settings and reports them; it installs nothing. sjson
--- registration happens at load only (see CONTRIBUTING.md caveat on this),
--- so a color/scale change here is live but a fresh Enabled->true after
--- reload will not retroactively register art that was skipped at boot.
+-- Runs on load AND every hot reload; only re-reads settings, installs nothing.
+-- sjson registration happens at load only, so a fresh Enabled/LandingMarker
+-- toggle after reload will not retroactively register art skipped at boot.
 local function on_reload()
     loadSettings()
     logAlways(("settings reloaded; outline %s/%s, ground %s/%s, landing marker %s/%s")
@@ -966,8 +841,6 @@ if reload ~= nil and type(reload.auto_single) == "function" then
         end
     end)
 else
-    -- ReLoad is a declared dependency, but a profile can be missing it.
-    -- Falling back costs hot reload and nothing else.
     logWarn("SGG_Modding-ReLoad unavailable; installing without hot reload")
     modutil.once_loaded.game(function()
         local ok, err = pcall(function()
@@ -984,8 +857,7 @@ else
     end)
 end
 
--- Exposed for the test suite only. The game ignores the return value of a
--- plugin chunk, so this costs nothing at runtime.
+-- Exposed for the test suite only.
 return {
     CONFIG = CONFIG,
     settings = settings,
