@@ -43,6 +43,12 @@ end
 -- shipping configuration: the mock config store starts empty, so every key
 -- binds to the plugin's own default (rule 1: test the configuration that
 -- actually ships).
+-- The overlay window is closed until the menu bar's Settings item is
+-- clicked. Panel tests drive renderWindow directly, so they open it first.
+local function openPanel(plugin)
+  plugin.ui.showWindow = true
+end
+
 local function boot(initial, opts)
   opts = opts or {}
   local G = dofile(HARNESS)
@@ -552,13 +558,15 @@ do
 end
 
 do
-  boot()
+  local _, plugin = boot()
+  openPanel(plugin)
   M.guiCallbacks.window()
   check("14.3 Begin and End balance on a normal frame", at(M.depth, "window") == 0)
 end
 
 do
-  boot(nil, { gui = { errorInBody = true } })
+  local _, plugin = boot(nil, { gui = { errorInBody = true } })
+  openPanel(plugin)
   local ok = pcall(M.guiCallbacks.window)
   check("14.4 a failure in the body does not escape the panel", ok == true)
   check("14.5 and the window is still closed", at(M.depth, "window") == 0)
@@ -567,6 +575,7 @@ end
 
 do
   local G, plugin = boot()
+  openPanel(plugin)
   M.guiCallbacks.window()
   M.guiCallbacks.menuBar()
   local values = at(at(plugin, "settings"), "values")
@@ -591,6 +600,7 @@ end
 do
   local G, plugin = boot(nil, { gui = { toggle = "Enabled##WheresEris_Enabled" } })
   check("14.9 starts enabled", at(at(plugin, "settings"), "values").Enabled == true)
+  openPanel(plugin)
   M.guiCallbacks.window()
   check("14.10 the checkbox flips the setting", at(at(plugin, "settings"), "values").Enabled == false)
   check("14.11 and persists it to the config store", M.store.Enabled == false)
@@ -686,6 +696,39 @@ do
 end
 
 -- =============================================================================
+
+do
+  -- REGRESSION. add_imgui runs every frame the overlay is open, so a window
+  -- submitted unconditionally is always on screen -- and with several mods
+  -- installed every one of their windows shows at once, which is what was
+  -- reported. The window must start closed and draw nothing until opened.
+  local _, plugin = boot()
+  check("14.20 the window starts closed", plugin.ui.showWindow == false,
+        tostring(plugin.ui.showWindow))
+  M.labels = {}
+  M.guiCallbacks.window()
+  local drew = false
+  for _, l in ipairs(M.labels) do if tostring(l):find("Begin:", 1, true) then drew = true end end
+  check("14.21 and a frame while closed submits no window", drew == false)
+end
+
+do
+  -- The menu bar's item opens the window rather than toggling the mod. Every
+  -- one of these panels shipped with the master switch as its only menu item,
+  -- so hunting for settings turned the mod off.
+  local _, plugin = boot(nil, { gui = { openMenu = true, clickMenuItem = "Settings" } })
+  local before = plugin.settings.values.Enabled
+  M.guiCallbacks.menuBar()
+  check("14.22 the Settings menu item opens the window", plugin.ui.showWindow == true,
+        tostring(plugin.ui.showWindow))
+  check("14.23 and does not touch the master switch",
+        plugin.settings.values.Enabled == before)
+  M.labels = {}
+  M.guiCallbacks.window()
+  local drew = false
+  for _, l in ipairs(M.labels) do if tostring(l):find("Begin:", 1, true) then drew = true end end
+  check("14.24 and now the window is submitted", drew == true)
+end
 
 print(("WheresEris: %d passed, %d failed"):format(passed, failed))
 for _, f in ipairs(failures) do print("  FAIL  " .. f) end

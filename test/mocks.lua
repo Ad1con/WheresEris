@@ -45,9 +45,15 @@ function M.makeImGui(script)
   local function rec(l) M.labels[#M.labels + 1] = l end
 
   return {
-    Begin = function(l)
+    -- Matches the real binding: called with an open-state bool, Begin returns
+    -- (open, shouldDraw) so the window can carry a close button. Called with
+    -- just a label it returns shouldDraw alone, which is the older shape.
+    Begin = function(l, open)
       rec("Begin:" .. tostring(l)); depth.window = depth.window + 1
-      return script.collapsed ~= true
+      local shouldDraw = script.collapsed ~= true
+      if open == nil then return shouldDraw end
+      if script.closeWindow then return false, shouldDraw end
+      return open, shouldDraw
     end,
     End = function() depth.window = depth.window - 1 end,
     BeginCombo = function(l)

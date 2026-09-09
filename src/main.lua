@@ -694,7 +694,14 @@ local function sliderSetting(imgui, key, label, low, high, fmt)
     if changed then saveSetting(key, value) end
 end
 
+-- rom.gui.add_imgui runs this EVERY frame the overlay is open, so without a
+-- gate the window is always on screen -- and with several mods installed all
+-- of their windows are stacked at once. Closed by default; the menu bar's
+-- Settings item is the way in. See MODDING_HADES2.md.
+local ui = { showWindow = false }
+
 local function renderWindow()
+    if not ui.showWindow then return end
     local imgui = rom.ImGui
     if imgui == nil then return end
 
@@ -705,7 +712,7 @@ local function renderWindow()
 
     -- Begin is OUTSIDE the pcall and End follows it unconditionally -- a raise
     -- in the body must not skip End and leave ImGui's window stack corrupted.
-    local shouldDraw = imgui.Begin("WheresEris")
+    local openState, shouldDraw = imgui.Begin("WheresEris###WheresEris", ui.showWindow)
 
     local ok, err = pcall(function()
         if shouldDraw then
@@ -740,12 +747,13 @@ local function renderWindow()
 
             if not settings.persistent then
                 imgui.Spacing()
-                imgui.TextDisabled("settings are NOT being saved to disk")
+                imgui.Text("Settings are NOT being saved to disk.")
             end
         end
     end)
 
     imgui.End()
+    if openState ~= nil then ui.showWindow = openState end
 
     if not ok then
         logWarn("overlay panel failed this frame: " .. tostring(err))
@@ -757,8 +765,8 @@ local function renderMenuBar()
         local imgui = rom.ImGui
         if imgui == nil then return end
         if imgui.BeginMenu("WheresEris") then
-            if imgui.MenuItem("Marker enabled##WheresEris_menu_enabled") then
-                saveSetting("Enabled", not settings.values.Enabled)
+            if imgui.MenuItem("Settings##WheresEris_menu_settings") then
+                ui.showWindow = not ui.showWindow
             end
             imgui.EndMenu()
         end
@@ -859,6 +867,7 @@ end
 
 -- Exposed for the test suite only.
 return {
+    ui = ui,   -- overlay visibility, so tests can open the window
     CONFIG = CONFIG,
     settings = settings,
     saveSetting = saveSetting,
