@@ -37,7 +37,7 @@ exit, so changes made while it is running are discarded.
 | `GroundFxScale` | `3` | Size of the ground marker. |
 | `LandingMarker` | `true` | Show the spot Eris will land on, from takeoff to touchdown. |
 | `LandingMarkerColor` | `Red` | Tint of the landing marker. |
-| `LandingMarkerScale` | `3` | Size of the landing marker, against the arena's own scale. |
+| `LandingMarkerScale` | `0.5` | Size of the landing marker. A starting estimate; adjust to taste. |
 
 **Colors** for `OutlineColor`, `GroundFxColor` and `LandingMarkerColor`:
 `Amber` `Ember` `Violet` `Gold` `Teal` `Cyan` `Green` `Magenta` `Red` `White`
