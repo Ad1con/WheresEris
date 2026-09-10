@@ -7,35 +7,35 @@ Extended rationale for WheresEris. Repo-only, not packaged -- see
 repository. This file exists for anything that spec did not need to say but a
 future reader of this code will want to know.
 
-## The one thing this mod cannot verify offline, and needs Caleb's playtest for
+## Landing marker art: confirmed rendering, scale wrong -- 2026-09-09 playtest
 
 The landing marker's art is the game's own keepsake face for Eris
 (`GUI\Screens\AwardMenu\KeepsakeMaxGift\KeepsakeMaxGift_big\Eris`, inside
 `GUI.pkg`), registered as a new Animation entry via `sjson.hook` on
 `Game/Animations/GUI_Screens_VFX.sjson` and attached in the 3D world with
-`CreateAnimation`, the same way RealHecate attaches `ApolloGroundGlow`.
+`CreateAnimation`. This was the one thing the offline suite could not verify
+(MODDING_HADES2.md section 3 rule 6: it proves the logic, not whether a
+texture renders). Caleb's first playtest confirms it renders -- a GUI-atlas
+texture attached with `CreateAnimation` in the 3D world, not just
+`CreateScreenComponent` on a 2D screen, which is now a technique this account
+has verified rather than one it merely expects to work.
 
-The registration technique is confirmed: Adicon-SelectFirstBoon (published,
-4.32.0) registers new Animation entries the same way -- FilePath naming an
-existing shipped texture, `EndFrame`/`NumFrames`/`StartFrame` = 1, `Material =
-"Unlit"` -- and it works, but only via `CreateScreenComponent` on a 2D screen.
-No mod on this machine has attached a GUI-atlas texture with `CreateAnimation`
-in the 3D world before this one. Both functions likely resolve `Name` through
-the same `Animations` table, which is why this design was chosen over
-inventing a new one, but "likely" is not "confirmed" -- exactly the gap
-MODDING_HADES2.md section 3 rule 6 describes: the offline suite proves the
-logic (which spot, when, whether it moves) exhaustively and cannot see
-whether a texture renders. RealHecate's own history is the precedent: its
-marker not appearing cost roughly fifteen playtest cycles to run down, for an
-animation technique that was already confirmed working elsewhere in that mod.
+What playtest also showed: the marker was far larger than a character,
+covering a large fraction of the screen. `LandingMarkerScale` shipped at 3.0,
+copied from RealHecate's `ApolloGroundGlow` default -- a texture tuned to read
+as "roughly one character footprint" at that value. The keepsake face is a
+240x240 source image, much larger natively than whatever `ApolloGroundGlow`'s
+own canvas is, and the registered Animation entry carries no `Scale` of its
+own the way vanilla's ground sprites typically do, so the runtime `Scale`
+argument multiplies straight off the full 240px source. The same number does
+not transfer between two different source textures.
 
-If the marker does not render: the wiring underneath it (which spot, correct
-eligibility, correct freeze-on-descent, correct RNG parity) is still doing its
-job and is fully covered by the suite. The fix at that point is almost
-certainly a different `CreateAnimation` argument (a `Group`, matching
-RealHecate's own header warning about `FX_Terrain` silently filing an
-animation into a render group that never draws) or a different Animations
-file to hook, not a rewrite of the selection logic.
+Fix: dropped the default to 0.5, estimated by eye against the screenshot, not
+independently confirmed. `onFlyUp` and the `SelectSpawnPoint` wrap now log the
+chosen spot id and the eventual teleport substitution
+(`landing: teleporting to marked spot X (vanilla would have picked Y)`), so
+the next playtest can confirm both the size and that the marker's spot is
+really where she lands, from the log rather than a screenshot.
 
 ## PreferredSpawnPointGroup -- traced and ruled out, not overlooked
 

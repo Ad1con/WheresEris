@@ -8,9 +8,13 @@ version, so the square brackets are load-bearing -- the action looks for
 ## [Unreleased]
 
 First build. Not yet released -- see the repository's `WHERES_ERIS_SPEC.md`
-definition of done for what is still outstanding (playtest confirmation, in
-particular whether the landing marker's art renders as expected -- see
-DESIGN.md).
+definition of done for what is still outstanding.
+
+First playtest (2026-09-09) confirmed the landing marker renders. Its default
+size did not: `LandingMarkerScale` shipped at 3.0, copied from RealHecate's
+ground-marker default, and rendered far larger than a character against the
+keepsake-face texture. Dropped to 0.5, an estimate pending confirmation. See
+DESIGN.md.
 
 - Outlines Eris and gives her a colored ground marker while she is standing on
   the ground, in RealHecate's own palette and settings vocabulary.

@@ -136,7 +136,11 @@ local settings = {
 
         LandingMarker = true,
         LandingMarkerColor = "Red",
-        LandingMarkerScale = 3.0,
+        -- Estimated from a 2026-09-09 playtest screenshot, not yet confirmed
+        -- live: 3.0 (RealHecate's ApolloGroundGlow default) rendered the
+        -- 240x240 keepsake-face texture far larger than a character. See
+        -- DESIGN.md.
+        LandingMarkerScale = 0.5,
     },
     entries = {},
     file = nil,
@@ -157,7 +161,7 @@ local CONFIG_DESCRIPTIONS = {
 
     LandingMarker = "Show a marker on the spot Eris will land on, from the moment she takes off until she touches down. Always one of the spots the game itself would have picked; see the README for how.",
     LandingMarkerColor = "Tint of the landing marker: Amber, Ember, Violet, Gold, Teal, Cyan, Green, Magenta, Red or White.",
-    LandingMarkerScale = "Size of the landing marker, tuned against the arena's own scale.",
+    LandingMarkerScale = "Size of the landing marker. Starting estimate, not yet confirmed live -- adjust to taste.",
 }
 
 local function sectionFor(key)
@@ -559,7 +563,8 @@ local function watchLanding(game, enemy, generation)
             stillGood = ok and passes
         end
         if not stillGood then
-            moveMarkerTo(game, enemy, pickSpot(game, enemy))
+            local newSpot = moveMarkerTo(game, enemy, pickSpot(game, enemy))
+            logAlways(("landing marker moved: %s -> %s"):format(tostring(spot), tostring(newSpot)))
         end
 
         game.wait(LANDING_POLL_INTERVAL)
@@ -577,7 +582,8 @@ function CONFIG.onFlyUp(game, enemy)
 
     local generation = (enemy[LANDING_GENERATION_FIELD] or 0) + 1
     enemy[LANDING_GENERATION_FIELD] = generation
-    moveMarkerTo(game, enemy, pickSpot(game, enemy))
+    local spot = moveMarkerTo(game, enemy, pickSpot(game, enemy))
+    logAlways(("takeoff: landing marker at spot %s"):format(tostring(spot)))
     game.thread(watchLanding, game, enemy, generation)
 end
 
@@ -645,6 +651,7 @@ local function installHooks(game)
 
         if real == nil then
             -- Never substitute a spot where vanilla had none.
+            logAlways("landing: vanilla found no legal spot, clearing the marker")
             local ok, err = pcall(CONFIG.onNoLanding, game, enemy)
             if not ok then logWarn("could not clear the landing marker: " .. tostring(err)) end
             return nil
@@ -654,11 +661,14 @@ local function installHooks(game)
         if marked ~= nil then
             local ok, passes = pcall(game.IsSpawnPointEligible, marked, encounter, currentRoom, args)
             if ok and passes then
+                logAlways(("landing: teleporting to marked spot %s (vanilla would have picked %s)")
+                    :format(tostring(marked), tostring(real)))
                 return marked
             end
         end
 
         -- Tracked spot missing or stale -- fall back to vanilla's real pick.
+        logAlways(("landing: marker was stale, teleporting to vanilla's own pick %s"):format(tostring(real)))
         return real
     end)
 
