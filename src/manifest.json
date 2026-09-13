@@ -2,7 +2,7 @@
   "namespace": "Adicon",
   "name": "WheresEris",
   "description": "Outlines Eris and marks the spot she will land on, from takeoff to touchdown.",
-  "version_number": "0.1.0",
+  "version_number": "1.0.0",
   "dependencies": [
     "Hell2Modding-Hell2Modding-1.0.78",
     "LuaENVY-ENVY-1.2.0",
