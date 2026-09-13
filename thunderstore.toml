@@ -5,7 +5,7 @@ schemaVersion = "0.0.1"
 [package]
 namespace = "Adicon"
 name = "WheresEris"
-versionNumber = "0.1.0"
+versionNumber = "1.0.0"
 description = "Outlines Eris and marks the spot she will land on, from takeoff to touchdown."
 websiteUrl = "https://github.com/Ad1con/WheresEris"
 containsNsfwContent = false
