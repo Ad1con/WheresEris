@@ -464,8 +464,12 @@ do
 end
 
 -- =============================================================================
--- 11b. Case 4/step 4 -- landing FREEZES the marker: the watcher stops, and the
--- marker stays showing exactly where she landed rather than being cleared.
+-- 11b. Landing CLEARS the marker. The first build froze it in place instead,
+-- on the theory that "whatever it shows is the destination" -- and the
+-- 2026-09-15 playtest showed what that costs: the portrait sat on the landing
+-- spot for the rest of the fight, and because LANDING_SPOT_FIELD stayed set,
+-- two later teleports were redirected to a spot from a flight that had ended
+-- a minute earlier. The marker's job ends the instant she lands.
 -- =============================================================================
 do
   local G, plugin = boot()
@@ -475,17 +479,60 @@ do
   check("11.3 a spot exists before landing (sanity)", landedSpot ~= nil)
 
   G.DoWeaponFire(eris, G.flyDownAiData())
-  check("11.4 landing does not clear the marker", eris[plugin.LANDING_SPOT_FIELD] == landedSpot)
-  check("11.5 the sprite is still attached at the landing spot",
-        G.attachedCount(plugin.LANDING_ANIMATION_NAME, landedSpot) == 1)
-
-  -- The watcher must be retired, not merely coincidentally quiet: invalidate
-  -- the frozen spot and prove ticking no longer moves it.
-  G.blockedLoS[landedSpot] = true
-  G.tick(50)
-  check("11.6 the frozen marker does not move even when its spot goes ineligible",
-        eris[plugin.LANDING_SPOT_FIELD] == landedSpot)
+  check("11.4 landing clears the marker", eris[plugin.LANDING_SPOT_FIELD] == nil,
+        tostring(eris[plugin.LANDING_SPOT_FIELD]))
+  check("11.5 and the sprite is gone from the landing spot",
+        G.attachedCount(plugin.LANDING_ANIMATION_NAME, landedSpot) == 0,
+        tostring(G.attachedCount(plugin.LANDING_ANIMATION_NAME, landedSpot)))
+  -- Nothing anywhere: walk every spawn point, not just the one she used.
+  local anywhere = 0
+  for _, id in ipairs(G.MapState.SpawnPoints) do
+    anywhere = anywhere + G.attachedCount(plugin.LANDING_ANIMATION_NAME, id)
+  end
+  check("11.6 nothing is attached at any spawn point", anywhere == 0, tostring(anywhere))
+  -- The watcher notices the generation bump on its next resume, not before.
+  G.tick(1)
   check("11.7 and no thread is still polling for it", G.liveThreadCount() == 0)
+end
+
+-- =============================================================================
+-- 11c. A teleport that did not follow a takeoff is never redirected -- even
+-- if a marker somehow survived. Three of her weapons pass isFlyDownTeleport
+-- (ErisFlyDown, ErisRelocateStrike2, ErisRelocate_Down); only one is a
+-- landing this mod placed a marker for.
+-- =============================================================================
+do
+  local G, plugin = boot()
+  local eris = G.spawnEris()
+  -- Plant a stale marker by hand, as fault 1 used to leave behind.
+  eris[plugin.LANDING_SPOT_FIELD] = 700001
+  eris["WheresEris_Airborne"] = false
+  local encounter, args = G.flyDownSelectArgs()
+  local picked = G.SelectSpawnPoint(G.CurrentRun.CurrentRoom, eris, encounter, args)
+  check("11.8 grounded, a stale marker does not redirect the teleport", picked ~= 700001,
+        tostring(picked))
+end
+
+-- =============================================================================
+-- 11d. The second flight. ErisRelocate_Up/_Down is the same maneuver at speed
+-- and was missed entirely: the ground marker floated with her through it and
+-- no landing marker was placed.
+-- =============================================================================
+do
+  local G, plugin = boot()
+  local eris = G.spawnEris()
+  G.DoWeaponFire(eris, G.flyUpAiData("ErisRelocate_Up"))
+  check("11.9 Relocate_Up hides the ground marker", G.attachedCount(plugin.GROUND_FX, eris.ObjectId) == 0)
+  check("11.10 and places a landing marker", eris[plugin.LANDING_SPOT_FIELD] ~= nil)
+  G.DoWeaponFire(eris, { WeaponName = "ErisRelocate_Down" })
+  check("11.11 Relocate_Down restores the ground marker", G.attachedCount(plugin.GROUND_FX, eris.ObjectId) == 1)
+  check("11.12 and clears the landing marker", eris[plugin.LANDING_SPOT_FIELD] == nil)
+
+  local eris2 = G.spawnEris()
+  G.DoWeaponFire(eris2, G.flyUpAiData("ErisRelocate_Up_P4"))
+  check("11.13 the phase-4 variant is tracked too", eris2[plugin.LANDING_SPOT_FIELD] ~= nil)
+  G.DoWeaponFire(eris2, { WeaponName = "ErisRelocate_Down_P4" })
+  check("11.14 and its landing clears the marker", eris2[plugin.LANDING_SPOT_FIELD] == nil)
 end
 
 -- =============================================================================
