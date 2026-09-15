@@ -322,10 +322,21 @@ local LANDING_ANIMATION_NAME = "WheresEris_LandingMarker"
 -- adds to red and comes out pinkish-white -- "still red" from a few feet back.
 -- RealHecate's DESIGN.md reached the same conclusion on Hecate's cyan floor:
 -- additive light can only wash toward white; arithmetic, not a bug. This
--- entry inherits the art and overrides the group to plain "FX_Terrain"
--- (alpha-blended, the most common terrain group) and the color to neutral
+-- entry carries the art with the group changed to plain "FX_Terrain"
+-- (alpha-blended, the most common terrain group) and the color set to neutral
 -- white at full alpha, so the runtime tint IS the drawn color.
+--
+-- It is a COPY of ApolloGroundGlow's definition, not InheritFrom = it. The
+-- first attempt inherited, and the engine logged
+--   AnimationData.cpp:218 WheresEris_LandingGlow trying to inherit from
+--   ApolloGroundGlow which does not exist
+-- because InheritFrom resolves at parse time in file load order, and
+-- GUI_Screens_VFX.sjson is read before Melinoe_Apollo_VFX.sjson defines the
+-- parent. The entry then had no FilePath and drew nothing. Every field below
+-- is from Melinoe_Apollo_VFX.sjson:1427; Scale 0.33 is kept so the runtime
+-- Scale means the same thing it does for the ground marker.
 local LANDING_GLOW_NAME = "WheresEris_LandingGlow"
+local LANDING_GLOW_FILE = [[Fx\Apollo\ApolloGroundGlow\ApolloGroundGlow]]
 
 -- One art per style, and the raw CreateAnimation scale that LandingMarkerScale
 -- = 1 maps to. ApolloGroundGlow reads as her footprint at 3.0 (GroundFxScale's
@@ -386,13 +397,23 @@ local function registerLandingArt()
             StartFrame = 1,
             Material = "Unlit",
         }
-        local glowOrder = { "Name", "InheritFrom", "GroupName", "Red", "Green", "Blue", "Alpha" }
+        local glowOrder = { "Name", "FilePath", "NumFrames", "PlaySpeed", "Loop", "Scale",
+                            "GroupName", "Red", "Green", "Blue", "Alpha",
+                            "LocationZFromOwner", "DieWithOwner", "AngleFromOwner", "UseOwnAngle" }
         local glowFields = {
             Name = LANDING_GLOW_NAME,
-            InheritFrom = GROUND_FX,
+            FilePath = LANDING_GLOW_FILE,
+            NumFrames = 15,
+            PlaySpeed = 30,
+            Loop = true,
+            Scale = 0.33,
             GroupName = "FX_Terrain",
             Red = 1, Green = 1, Blue = 1,
             Alpha = 1,
+            LocationZFromOwner = "Ignore",
+            DieWithOwner = true,
+            AngleFromOwner = "Ignore",
+            UseOwnAngle = false,
         }
         local glowEntry = (sjson.to_object and sjson.to_object(glowFields, glowOrder)) or glowFields
         sjson.hook(animFile, function(data)
@@ -976,6 +997,7 @@ return {
     TELEPORT_RADIUS = TELEPORT_RADIUS,
     LANDING_ANIMATION_NAME = LANDING_ANIMATION_NAME,
     LANDING_GLOW_NAME = LANDING_GLOW_NAME,
+    LANDING_GLOW_FILE = LANDING_GLOW_FILE,
     LANDING_STYLES = LANDING_STYLES,
     LANDING_STYLE_BASE = LANDING_STYLE_BASE,
     GROUND_FX = GROUND_FX,
