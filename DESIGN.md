@@ -131,14 +131,33 @@ concluded "additive light can only ever wash toward white -- arithmetic, not a
 bug." Red works for her only because red on cyan happens to be far apart.
 
 So `WheresEris_LandingGlow` is registered via the same `sjson.hook` as the
-portrait, with `InheritFrom = "ApolloGroundGlow"`, `GroupName = "FX_Terrain"`
-(the plain alpha-blended terrain group, and the most common one in the game's
-own files), and `Red = Green = Blue = Alpha = 1` so the runtime `Color` is the
-drawn color rather than a multiplier on orange. The ground marker under her
-keeps the original additive glow -- red-on-red is her problem too, but she is
-also outlined, and it is not the thing a player is running toward.
+portrait, as a **copy** of `ApolloGroundGlow`'s definition with
+`GroupName = "FX_Terrain"` (the plain alpha-blended terrain group, and the most
+common one in the game's own files) and `Red = Green = Blue = Alpha = 1`, so the
+runtime `Color` is the drawn color rather than a multiplier on orange. The
+ground marker under her keeps the original additive glow -- red-on-red is her
+problem too, but she is also outlined, and it is not the thing a player is
+running toward.
 
-Test 18.3d asserts the group is not additive and fails if it is put back.
+**Why a copy and not `InheritFrom`.** The first version inherited, and the
+third playtest of the day drew nothing at all. The engine said why:
+
+```
+[ERR] AnimationData.cpp:218 WheresEris_LandingGlow trying to inherit from
+      ApolloGroundGlow which does not exist
+```
+
+`InheritFrom` resolves at parse time, in file load order, and
+`GUI_Screens_VFX.sjson` is read before `Melinoe_Apollo_VFX.sjson` defines the
+parent. The entry ended up with no `FilePath`. Vanilla's own inheriting entries
+all sit in the same file as their parent, later in it. An entry a mod injects
+into a file the parent is not in must carry every field itself -- the
+`FilePath`, the frame count and speed, the loop flag -- or it is an animation
+of nothing. `Scale = 0.33` is copied too, so the runtime `Scale` argument means
+the same thing for this marker as for the ground marker.
+
+Test 18.3c asserts the entry has a `FilePath` and no `InheritFrom`; 18.3d that
+the group is not additive. Both fail if either is put back.
 
 ## PreferredSpawnPointGroup -- traced and ruled out, not overlooked
 

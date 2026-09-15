@@ -804,8 +804,16 @@ do
     if e.Name == plugin.LANDING_GLOW_NAME then glowEntry = e end
   end
   check("18.3b the landing glow is registered", glowEntry ~= nil)
-  check("18.3c and inherits the ground glow's art", glowEntry and glowEntry.InheritFrom == plugin.GROUND_FX,
-        glowEntry and tostring(glowEntry.InheritFrom))
+  -- Self-contained, NOT InheritFrom: the engine resolves InheritFrom at parse
+  -- time in file load order, and GUI_Screens_VFX.sjson is read before the
+  -- file that defines ApolloGroundGlow. The first build inherited, the engine
+  -- logged "trying to inherit from ApolloGroundGlow which does not exist", and
+  -- the marker drew nothing through an entire fight.
+  check("18.3c and carries the ground glow's art by path, not by InheritFrom",
+        glowEntry and glowEntry.FilePath == plugin.LANDING_GLOW_FILE and glowEntry.InheritFrom == nil,
+        glowEntry and (tostring(glowEntry.FilePath) .. " / inherit=" .. tostring(glowEntry.InheritFrom)))
+  check("18.3c2 with the frame data a copy needs to animate at all",
+        glowEntry and glowEntry.NumFrames == 15 and glowEntry.PlaySpeed == 30 and glowEntry.Loop == true)
   check("18.3d and is NOT additive", glowEntry and glowEntry.GroupName == "FX_Terrain",
         glowEntry and tostring(glowEntry.GroupName))
   check("18.3e and carries no baked tint, so the runtime color is the drawn color",
