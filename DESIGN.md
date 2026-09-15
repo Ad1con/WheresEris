@@ -37,6 +37,85 @@ chosen spot id and the eventual teleport substitution
 the next playtest can confirm both the size and that the marker's spot is
 really where she lands, from the log rather than a screenshot.
 
+## The landing marker's lifecycle -- 2026-09-15 playtest, two fights
+
+The 0.5 default above never reached the player. `Adicon-WheresEris.cfg` had
+been written by the 3.0 build, and the file always beats the code default
+(MODDING_HADES2.md section 4, first rule) -- so the fix shipped and the
+portrait stayed 720px wide. A default change is not a fix on any profile that
+already has the file; the .cfg has to move too, or the setting has to be
+renamed.
+
+The log from this morning also shows three lifecycle faults, all independent
+of size.
+
+**1. The marker is never cleared after a normal landing.** `onFlyDown` bumps
+the landing generation, which retires `watchLanding` -- and `watchLanding` is
+the only thing that ever calls `moveMarkerTo(nil)`, and only on death. So the
+watcher is killed before it can clean up, `onFlyDown` does not clean up
+either, and the portrait sits on the landing spot for the rest of the fight.
+"Stayed on the screen" is exactly this.
+
+**2. The stale marker redirects later teleports.** Because `LANDING_SPOT_FIELD`
+is never cleared, every later `SelectSpawnPoint` finds it, and if the spot is
+still eligible, sends her there instead of vanilla's pick:
+
+```
+11:37:03  landing: teleporting to marked spot 744610 (vanilla would have picked 744617)
+11:37:14  landing: teleporting to marked spot 744610 (vanilla would have picked 744610)
+```
+
+Neither of those followed a takeoff. RNG parity survives (base ran first), but
+her position does not: she was sent to a spot from a flight that ended a
+minute earlier. That is the one thing this mod promised never to do.
+
+**3. The teleport filter is too broad.** `isFlyDownTeleport` tests for
+`RequireLoS` on the args and `SpawnNearId == hero`, and three weapons match:
+
+```
+ErisFlyDown           the landing this mod was written for
+ErisRelocateStrike2   a teleport-strike, no flight
+ErisRelocate_Down     the landing of a SECOND flight, see below
+```
+
+Fight one logged eighteen "marker was stale" landings and zero takeoffs. Those
+were RelocateStrike2 and Relocate_Down teleports hitting the substitution path
+with no marker to substitute. Harmless there, only because nothing had left a
+marker behind yet.
+
+**4. There is a second flight.** `ErisRelocate_Up` (and `_Up_P4`) chains to
+`ErisRelocate_Down` (and `_Down_P4`), using `Enemy_Eris_FlyUp_Start_Fast` /
+`Enemy_Eris_FlyUp_Fire_Fast`. It is the fast variant of the same maneuver.
+`FLY_UP_WEAPONS` and `FLY_DOWN_WEAPON` name only `ErisFlyUp*` and
+`ErisFlyDown`, so during a Relocate flight the ground marker stays attached
+and floats with her, and no landing marker is placed.
+
+### The fixes
+
+* `onFlyDown` calls `moveMarkerTo(game, enemy, nil)`. Safe, because the
+  DoWeaponFire wrap runs `base()` first and the teleport -- and therefore the
+  `SelectSpawnPoint` substitution -- happens inside `base()`. By the time
+  `onFlyDown` runs, the marker has already done its job.
+* The `SelectSpawnPoint` wrap substitutes only while `enemy[AIRBORNE_FIELD]` is
+  true. A teleport that did not follow a tracked takeoff cannot be redirected,
+  whatever `LANDING_SPOT_FIELD` holds. This makes fault 2 impossible even if
+  fault 1 ever comes back.
+* `FLY_UP_WEAPONS` gains `ErisRelocate_Up` and `ErisRelocate_Up_P4`;
+  `FLY_DOWN_WEAPON` becomes a set holding `ErisFlyDown`, `ErisRelocate_Down`,
+  `ErisRelocate_Down_P4`.
+* `LandingMarkerScale` default and the live .cfg both go to 1.0 -- 240px, about
+  half her footprint. Caleb adjusts from there.
+
+### The early highlight, since he asked
+
+He likes that the outline and ground marker appear a beat before her model
+does. That is not prediction; it is hook timing, twice over. `SetupUnit` marks
+her the instant the unit exists, before her entrance animation has played. And
+on every landing, `onFlyDown` runs after `base()`, which includes the teleport
+-- so the ground marker reappears at the destination while the descent
+animation is still finishing. Both are stable side effects of where the hooks
+sit and cost nothing. Worth knowing so nobody "fixes" them.
+
 ## PreferredSpawnPointGroup -- traced and ruled out, not overlooked
 
 A review pass over the real `HandleEnemyTeleportation` call site
