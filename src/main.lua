@@ -54,6 +54,18 @@ local AIRBORNE_FIELD = "WheresEris_Airborne"
 local LANDING_GENERATION_FIELD = "WheresEris_LandingGeneration"
 local LANDING_SPOT_FIELD = "WheresEris_LandingSpotId"
 
+-- The relocate strike. ErisRelocateStrike winds up for 0.5s (PreAttack 0.225
+-- + Fire 0.275) and chains to ErisRelocateStrike2, which teleports at
+-- PreAttackDuration 0 through the same SelectSpawnPoint call the landing uses
+-- (HandleEnemyTeleportation, EnemyAILogic.lua: any spawn point within 1000 of
+-- the hero, LoS required). So the same trick works: mark during the windup,
+-- substitute on the teleport. Half a second of warning -- the game's own
+-- telegraph for the move. Off by default; see the setting.
+local STRIKE_WINDUP_WEAPONS = { ErisRelocateStrike = true }
+local STRIKE_TELEPORT_WEAPONS = { ErisRelocateStrike2 = true }
+local STRIKE_PENDING_FIELD = "WheresEris_StrikePending"
+local STRIKE_SPOT_FIELD = "WheresEris_StrikeSpotId"
+
 -- ErisFlyUp_P4 (WeaponData_Eris.lua:1520) is ErisFlyUp with MaxUses = 1, used
 -- on her fourth phase; both stamp aiData.WeaponName with their own key.
 -- ErisRelocate_Up (and _P4) is the SAME maneuver at speed --
@@ -143,6 +155,10 @@ local settings = {
         -- This doubles up behind its own setting rather than replacing it.
         OutlineInDreamDives = true,
 
+        -- Off by default. A half-second flash is either exactly the cue you
+        -- wanted or one more thing on the floor, and that is a taste call.
+        StrikeMarker = false,
+        StrikeMarkerColor = "Magenta",
         LandingMarker = true,
         -- Glow: the same ground glow that marks her, at the destination, in a
         -- contrasting color -- one shape, two colors, "her" and "where she is
@@ -175,6 +191,8 @@ local CONFIG_DESCRIPTIONS = {
     GroundFxScale = "Size of the ground marker. 3 is roughly her own footprint.",
     OutlineInDreamDives = "Apply this mod's outline in Dream Dives too, on top of vanilla's own. Off leaves Dream runs exactly as the game made them.",
 
+    StrikeMarker = "Show a marker on the spot Eris will teleport to for her relocating strike, during the half-second windup. Same shape and size as the landing marker, in its own color.",
+    StrikeMarkerColor = "Color of the strike marker: Amber, Ember, Violet, Gold, Teal, Cyan, Green, Magenta, Red or White.",
     LandingMarker = "Show a marker on the spot Eris will land on, from the moment she takes off until she touches down. Always one of the spots the game itself would have picked; see the README for how.",
     LandingMarkerStyle = "What the landing marker looks like. Glow: a solid ground glow in the landing color, twice her size. Portrait: Eris's keepsake face on the floor.",
     LandingMarkerColor = "Color of the landing marker: Amber, Ember, Violet, Gold, Teal, Cyan, Green, Magenta, Red or White. White stands out most against the arena.",
@@ -294,6 +312,11 @@ function CONFIG.resolvedGroundColor()
         return nil
     end
     local r, g, b = colorTo255(rgb)
+    return { r, g, b, 255 }
+end
+
+function CONFIG.resolvedStrikeColor()
+    local r, g, b = colorTo255(resolveColor(settings.values.StrikeMarkerColor, "strike marker"))
     return { r, g, b, 255 }
 end
 
@@ -605,14 +628,17 @@ local function pickSpot(game, enemy)
     return eligible[math.random(#eligible)]
 end
 
-local function attachLandingMarker(game, spotId)
+local function attachMarkerAt(game, spotId, color)
     local args = {
         Name = CONFIG.landingAnimationName(),
         DestinationId = spotId,
         Scale = CONFIG.landingRawScale(),
-        Color = CONFIG.resolvedLandingColor(),
+        Color = color,
     }
     game.CreateAnimation(args)
+end
+local function attachLandingMarker(game, spotId)
+    attachMarkerAt(game, spotId, CONFIG.resolvedLandingColor())
 end
 
 local function detachLandingMarker(game, spotId)
@@ -636,6 +662,20 @@ local function moveMarkerTo(game, enemy, newSpot)
     enemy[LANDING_SPOT_FIELD] = newSpot
     if newSpot ~= nil and newSpot ~= old then
         attachLandingMarker(game, newSpot)
+    end
+    return newSpot
+end
+
+-- The strike marker has its own field so a strike and a flight can never
+-- share or clobber a spot, and its own color so the two read differently.
+local function moveStrikeMarkerTo(game, enemy, newSpot)
+    local old = enemy[STRIKE_SPOT_FIELD]
+    if old ~= nil and old ~= newSpot then
+        detachLandingMarker(game, old)
+    end
+    enemy[STRIKE_SPOT_FIELD] = newSpot
+    if newSpot ~= nil and newSpot ~= old then
+        attachMarkerAt(game, newSpot, CONFIG.resolvedStrikeColor())
     end
     return newSpot
 end
@@ -706,6 +746,22 @@ end
 
 -- Vanilla found nowhere to send her either. Hide the marker rather than
 -- leaving it somewhere she will not go.
+-- Runs BEFORE the windup weapon's base(), which blocks for the whole half
+-- second: placed after it, the marker would appear at the instant of the
+-- teleport and mean nothing.
+function CONFIG.onStrikeWindup(game, enemy)
+    if not settings.values.StrikeMarker then return end
+    enemy[STRIKE_PENDING_FIELD] = true
+    local spot = moveStrikeMarkerTo(game, enemy, pickSpot(game, enemy))
+    logAlways(("strike windup: marker at spot %s"):format(tostring(spot)))
+end
+
+-- After the teleporting weapon's base(): she has arrived, the marker is done.
+function CONFIG.onStrikeTeleported(game, enemy)
+    enemy[STRIKE_PENDING_FIELD] = false
+    moveStrikeMarkerTo(game, enemy, nil)
+end
+
 function CONFIG.onNoLanding(game, enemy)
     moveMarkerTo(game, enemy, nil)
 end
@@ -734,11 +790,23 @@ local function installHooks(game)
     -- Goals 1 (hide/restore) and 2 (pick/freeze), both keyed off which weapon
     -- fired via aiData.WeaponName.
     ModUtil.Path.Wrap("DoWeaponFire", function(base, enemy, aiData)
-        base(enemy, aiData)
-        if not isEris(enemy) or not settings.values.Enabled then return end
-
+        local tracked = isEris(enemy) and settings.values.Enabled
         local weaponName = aiData and aiData.WeaponName
-        if FLY_UP_WEAPONS[weaponName] then
+
+        -- The one pre-base hook. base() yields through the whole windup, so
+        -- anything meant to be visible DURING it has to go up first.
+        if tracked and STRIKE_WINDUP_WEAPONS[weaponName] then
+            local ok, err = pcall(CONFIG.onStrikeWindup, game, enemy)
+            if not ok then logWarn("strike windup handling failed: " .. tostring(err)) end
+        end
+
+        base(enemy, aiData)
+        if not tracked then return end
+
+        if STRIKE_TELEPORT_WEAPONS[weaponName] then
+            local ok, err = pcall(CONFIG.onStrikeTeleported, game, enemy)
+            if not ok then logWarn("strike teleport handling failed: " .. tostring(err)) end
+        elseif FLY_UP_WEAPONS[weaponName] then
             local ok, err = pcall(CONFIG.onFlyUp, game, enemy)
             if not ok then logWarn("fly-up handling failed: " .. tostring(err)) end
         elseif FLY_DOWN_WEAPONS[weaponName] then
@@ -767,6 +835,23 @@ local function installHooks(game)
         -- weapons pass isFlyDownTeleport (ErisFlyDown, ErisRelocateStrike2,
         -- ErisRelocate_Down); without this gate a stale marker from an
         -- earlier flight redirected a later teleport -- twice in one fight.
+        -- A strike in its windup: substitute its own marker. She cannot be
+        -- winding up a strike while airborne, so the two never collide.
+        if enemy[STRIKE_PENDING_FIELD] and settings.values.StrikeMarker then
+            local strikeSpot = enemy[STRIKE_SPOT_FIELD]
+            if strikeSpot ~= nil then
+                local ok, passes = pcall(game.IsSpawnPointEligible, strikeSpot, encounter, currentRoom, args)
+                if ok and passes then
+                    logAlways(("strike: teleporting to marked spot %s (vanilla would have picked %s)")
+                        :format(tostring(strikeSpot), tostring(real)))
+                    return strikeSpot
+                end
+                moveStrikeMarkerTo(game, enemy, real)
+                logAlways(("strike: marker was stale, teleporting to vanilla's own pick %s"):format(tostring(real)))
+                return real
+            end
+        end
+
         local marked = enemy[AIRBORNE_FIELD] and enemy[LANDING_SPOT_FIELD] or nil
         if marked ~= nil then
             local ok, passes = pcall(game.IsSpawnPointEligible, marked, encounter, currentRoom, args)
@@ -879,6 +964,8 @@ local function renderWindow()
             imgui.Spacing()
             imgui.Separator()
             imgui.Text("Landing marker")
+            checkSetting(imgui, "StrikeMarker", "Show where her relocating strike lands")
+            comboSetting(imgui, "StrikeMarkerColor", CONFIG.colorOrder, "Strike marker color")
             checkSetting(imgui, "LandingMarker", "Show where she will land")
             comboSetting(imgui, "LandingMarkerStyle", LANDING_STYLES, "Landing marker style")
             comboSetting(imgui, "LandingMarkerColor", CONFIG.colorOrder, "Landing marker color")
@@ -1021,5 +1108,7 @@ return {
     GROUND_FX = GROUND_FX,
     MARKED_FIELD = MARKED_FIELD,
     LANDING_SPOT_FIELD = LANDING_SPOT_FIELD,
+    STRIKE_SPOT_FIELD = STRIKE_SPOT_FIELD,
+    STRIKE_PENDING_FIELD = STRIKE_PENDING_FIELD,
     AIRBORNE_FIELD = AIRBORNE_FIELD,
 }

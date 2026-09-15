@@ -191,6 +191,42 @@ spot went bad at the last instant and vanilla's own pick is used, the marker
 moves to *that* spot rather than sitting on one she will not use. Tests
 19.2-19.9; the retire is sabotage-verified (three failures without it).
 
+## The strike marker, and why its hook is the only one that runs before base()
+
+`ErisRelocateStrike` winds up for 0.5s (PreAttack 0.225 + Fire 0.275) and
+chains to `ErisRelocateStrike2`, which has `PreAttackTeleport = true` and
+`PreAttackDuration = 0`. `HandleEnemyTeleportation` (EnemyAILogic.lua) sends
+it through `SelectSpawnPoint` with `SpawnNearId = hero, SpawnRadius = 1000,
+RequireLoS = true` and no required spawn-point type -- the same call shape as
+the landing outside the Oath. So the landing's mechanism transfers whole:
+pick with the same eligibility call, mark, substitute after `base()` has drawn
+vanilla's own number.
+
+Two things differ from the landing.
+
+**The marker goes up BEFORE `base()`.** `DoWeaponFire`'s `base()` yields
+through the entire attack. For the takeoff that is fine -- she is airborne for
+seconds afterwards and the marker placed on return has plenty of time. For
+the strike, the windup IS the attack: place the marker after `base()` returns
+and it appears at the instant of the teleport, then vanishes. This is the one
+hook in the file that runs pre-base, and the harness now records weapon and
+animation events in one stream so 20.8b can assert the order; the mock
+`base()` cannot yield, so it could not have caught this any other way.
+
+**It has its own field.** `STRIKE_SPOT_FIELD`, not `LANDING_SPOT_FIELD`, and
+its own color. She cannot be winding up a strike while airborne, so the two
+never contend for `SelectSpawnPoint` -- the strike branch is gated on
+`STRIKE_PENDING_FIELD`, the landing on `AIRBORNE_FIELD`, and a stale value in
+either field with its gate down redirects nothing (20.15, 11.8).
+
+No watcher. A half-second window is not long enough for a re-pick to help,
+and the substitution already handles a spot that went bad at the last instant
+by moving the marker to vanilla's pick.
+
+Off by default. Half a second is the game's own telegraph for the move, so it
+is real information -- but whether a flash that short reads as a cue or as
+noise is a taste call, and the player is the one to make it.
+
 ## PreferredSpawnPointGroup -- traced and ruled out, not overlooked
 
 A review pass over the real `HandleEnemyTeleportation` call site
