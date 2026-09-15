@@ -181,13 +181,17 @@ neutral, unlit. The cost the first attempt worried about is real but
 smaller: additive white washes toward pink-white on red; saturated colors
 read as themselves, as the green proved. 18.3d now asserts the additive group.
 
-Which also reframes the very first failure. When the landing glow reused the
-literal `ApolloGroundGlow` name alongside the red ground marker, a cyan landing
-glow rendered red; under its own name, both render. The most economical
-reading is that the engine holds one tint per animation *name*, and the
-red one won. Not proven, but consistent with every fight since, and cheap to
-respect: **one animation name, one tint.** 18.3d2 asserts the name is the
-mod's own.
+**Superseded by the sixth playtest.** The additive glow, own name, unlit,
+White: still red. Then the decisive one -- `LandingMarkerStyle = Portrait`,
+the art we had seen render, tinted White: **red face**. Same fight, cyan
+outline and green ground glow rendered their colors. So it is not the art,
+the group, the material, or the tint pipeline. The one variable that
+correlates with red is the marker's `DestinationId` being a *spawn point
+obstacle* rather than a unit. The one-tint-per-name reading above is
+therefore doubtful; the own-name rule costs nothing and stays, but the
+next attempt is to attach the marker to a neutral proxy obstacle spawned at
+the spot -- vanilla's own `InvisibleTarget` pattern -- rather than to the
+spawn point. `HANDOFF.md` has the plan. Work paused here on 2026-09-15.
 
 ## The watcher retires when the landing is committed, not at touchdown
 
