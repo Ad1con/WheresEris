@@ -116,6 +116,30 @@ on every landing, `onFlyDown` runs after `base()`, which includes the teleport
 animation is still finishing. Both are stable side effects of where the hooks
 sit and cost nothing. Worth knowing so nobody "fixes" them.
 
+## Why the landing glow is re-registered rather than reusing ApolloGroundGlow
+
+Second 2026-09-15 playtest: the glow landing marker, tinted Cyan, read as red.
+So did the outline and the ground marker, which ARE red -- but the point is
+that Cyan looked no different.
+
+`ApolloGroundGlow` is defined with `GroupName = "FX_Terrain_Add"` and a baked
+`Red = 1, Green = 0.6, Blue = 0`. Additive means the sprite's color is added to
+whatever is under it. Eris's floor is red and orange lava, so an additive red
+adds nothing visible and an additive cyan adds to red and comes out pale pink.
+RealHecate's DESIGN.md hit the identical wall on Hecate's cyan floor and
+concluded "additive light can only ever wash toward white -- arithmetic, not a
+bug." Red works for her only because red on cyan happens to be far apart.
+
+So `WheresEris_LandingGlow` is registered via the same `sjson.hook` as the
+portrait, with `InheritFrom = "ApolloGroundGlow"`, `GroupName = "FX_Terrain"`
+(the plain alpha-blended terrain group, and the most common one in the game's
+own files), and `Red = Green = Blue = Alpha = 1` so the runtime `Color` is the
+drawn color rather than a multiplier on orange. The ground marker under her
+keeps the original additive glow -- red-on-red is her problem too, but she is
+also outlined, and it is not the thing a player is running toward.
+
+Test 18.3d asserts the group is not additive and fails if it is put back.
+
 ## PreferredSpawnPointGroup -- traced and ruled out, not overlooked
 
 A review pass over the real `HandleEnemyTeleportation` call site

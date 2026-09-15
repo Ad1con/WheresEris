@@ -36,8 +36,8 @@ exit, so changes made while it is running are discarded.
 | `GroundFxColor` | `Red` | Color of the ground marker, or `None` to leave the art its own gold-orange. |
 | `GroundFxScale` | `3` | Size of the ground marker. |
 | `LandingMarker` | `true` | Show the spot Eris will land on, from takeoff to touchdown. |
-| `LandingMarkerStyle` | `Glow` | `Glow` is the same ground glow that marks her, at her destination. `Portrait` is her keepsake face on the floor. |
-| `LandingMarkerColor` | `Cyan` | Color of the landing marker. Cyan stands out against the arena. |
+| `LandingMarkerStyle` | `Glow` | `Glow` is a solid ground glow at her destination, twice her size. `Portrait` is her keepsake face on the floor. |
+| `LandingMarkerColor` | `White` | Color of the landing marker. White stands out most against the arena. |
 | `LandingMarkerScale` | `1` | Size of the landing marker. `1` is normal for the chosen style; `2` is twice that. |
 
 **Colors** for `OutlineColor`, `GroundFxColor` and `LandingMarkerColor`:

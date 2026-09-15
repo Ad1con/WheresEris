@@ -77,8 +77,8 @@ do
   check("1.3 ships the ground marker on, Red, scale 3.0",
         at(v, "GroundFx") == true and at(v, "GroundFxColor") == "Red" and at(v, "GroundFxScale") == 3.0)
   check("1.4 ships OutlineInDreamDives on", at(v, "OutlineInDreamDives") == true)
-  check("1.5 ships the landing marker on, as a Cyan glow",
-        at(v, "LandingMarker") == true and at(v, "LandingMarkerColor") == "Cyan"
+  check("1.5 ships the landing marker on, as a White glow",
+        at(v, "LandingMarker") == true and at(v, "LandingMarkerColor") == "White"
         and at(v, "LandingMarkerStyle") == "Glow",
         ("%s/%s/%s"):format(tostring(at(v, "LandingMarker")), tostring(at(v, "LandingMarkerColor")),
                             tostring(at(v, "LandingMarkerStyle"))))
@@ -789,17 +789,33 @@ end
 do
   local G, plugin = boot()
   check("18.1 default style is Glow", plugin.CONFIG.landingStyle() == "Glow")
-  check("18.2 which is the same art as the ground marker",
-        plugin.CONFIG.landingAnimationName() == plugin.GROUND_FX)
-  check("18.3 at scale 1 it draws at the glow's footprint size (3.0)",
-        math.abs(plugin.CONFIG.landingRawScale() - 3.0) < 1e-9,
+  check("18.2 which is this mod's own re-registered glow, not ApolloGroundGlow itself",
+        plugin.CONFIG.landingAnimationName() == plugin.LANDING_GLOW_NAME
+        and plugin.LANDING_GLOW_NAME ~= plugin.GROUND_FX)
+  check("18.3 at scale 1 it draws at twice her footprint (6.0)",
+        math.abs(plugin.CONFIG.landingRawScale() - 6.0) < 1e-9,
         tostring(plugin.CONFIG.landingRawScale()))
+
+  -- The whole reason the glow is re-registered: ApolloGroundGlow is additive
+  -- with a baked orange, and on a red floor no tint reads. The entry this mod
+  -- adds must inherit the art and override exactly those two things.
+  local glowEntry
+  for _, e in ipairs(M.animations.Animations) do
+    if e.Name == plugin.LANDING_GLOW_NAME then glowEntry = e end
+  end
+  check("18.3b the landing glow is registered", glowEntry ~= nil)
+  check("18.3c and inherits the ground glow's art", glowEntry and glowEntry.InheritFrom == plugin.GROUND_FX,
+        glowEntry and tostring(glowEntry.InheritFrom))
+  check("18.3d and is NOT additive", glowEntry and glowEntry.GroupName == "FX_Terrain",
+        glowEntry and tostring(glowEntry.GroupName))
+  check("18.3e and carries no baked tint, so the runtime color is the drawn color",
+        glowEntry and glowEntry.Red == 1 and glowEntry.Green == 1 and glowEntry.Blue == 1 and glowEntry.Alpha == 1)
 
   local eris = G.spawnEris()
   G.DoWeaponFire(eris, G.flyUpAiData("ErisFlyUp"))
   local spot = eris[plugin.LANDING_SPOT_FIELD]
   check("18.4 the glow is attached at the landing spot",
-        G.attachedCount(plugin.GROUND_FX, spot) == 1)
+        G.attachedCount(plugin.LANDING_GLOW_NAME, spot) == 1)
   check("18.5 and NOT the portrait",
         G.attachedCount(plugin.LANDING_ANIMATION_NAME, spot) == 0)
 end

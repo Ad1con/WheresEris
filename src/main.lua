@@ -149,8 +149,10 @@ local settings = {
         -- going". Portrait is the keepsake face, kept as an option; a
         -- 2026-09-15 Rivals playtest found it did not read well on the floor.
         LandingMarkerStyle = "Glow",
-        -- Cyan against the red-and-orange arena. Red was invisible on it.
-        LandingMarkerColor = "Cyan",
+        -- White. On the red-and-orange arena it is the one color guaranteed
+        -- to read; now that the glow is alpha-blended rather than additive, it
+        -- is actually white on the floor rather than a brighter orange.
+        LandingMarkerColor = "White",
         -- A multiplier on the style's own tuned size, so 1 is right for either
         -- art and 2 is twice that. The raw CreateAnimation scale differs per
         -- style (LANDING_STYLE_BASE), which is why this is not that number.
@@ -174,8 +176,8 @@ local CONFIG_DESCRIPTIONS = {
     OutlineInDreamDives = "Apply this mod's outline in Dream Dives too, on top of vanilla's own. Off leaves Dream runs exactly as the game made them.",
 
     LandingMarker = "Show a marker on the spot Eris will land on, from the moment she takes off until she touches down. Always one of the spots the game itself would have picked; see the README for how.",
-    LandingMarkerStyle = "What the landing marker looks like. Glow: the same ground glow that marks her, in the landing color. Portrait: Eris's keepsake face on the floor.",
-    LandingMarkerColor = "Color of the landing marker: Amber, Ember, Violet, Gold, Teal, Cyan, Green, Magenta, Red or White. Cyan stands out against the arena.",
+    LandingMarkerStyle = "What the landing marker looks like. Glow: a solid ground glow in the landing color, twice her size. Portrait: Eris's keepsake face on the floor.",
+    LandingMarkerColor = "Color of the landing marker: Amber, Ember, Violet, Gold, Teal, Cyan, Green, Magenta, Red or White. White stands out most against the arena.",
     LandingMarkerScale = "Size of the landing marker. 1 is the normal size for the chosen style; 2 is twice that.",
 }
 
@@ -313,13 +315,28 @@ local GROUND_FX = "ApolloGroundGlow"
 -- not yet for CreateAnimation in the 3D world).
 local LANDING_ANIMATION_NAME = "WheresEris_LandingMarker"
 
+-- The glow, re-registered under this mod's own name for two reasons found on
+-- the 2026-09-15 playtest. ApolloGroundGlow is defined with GroupName =
+-- "FX_Terrain_Add" (additive) and a baked Red=1/Green=0.6/Blue=0. On Eris's
+-- red-and-orange floor an additive red is invisible and an additive cyan just
+-- adds to red and comes out pinkish-white -- "still red" from a few feet back.
+-- RealHecate's DESIGN.md reached the same conclusion on Hecate's cyan floor:
+-- additive light can only wash toward white; arithmetic, not a bug. This
+-- entry inherits the art and overrides the group to plain "FX_Terrain"
+-- (alpha-blended, the most common terrain group) and the color to neutral
+-- white at full alpha, so the runtime tint IS the drawn color.
+local LANDING_GLOW_NAME = "WheresEris_LandingGlow"
+
 -- One art per style, and the raw CreateAnimation scale that LandingMarkerScale
 -- = 1 maps to. ApolloGroundGlow reads as her footprint at 3.0 (GroundFxScale's
 -- own default). The 240x240 keepsake face reads right at about 0.67 -- two
 -- thirds of the 1.0 a playtest found already too large.
 local LANDING_STYLES = { "Glow", "Portrait" }
-local LANDING_STYLE_ART  = { Glow = GROUND_FX, Portrait = LANDING_ANIMATION_NAME }
-local LANDING_STYLE_BASE = { Glow = 3.0, Portrait = 0.67 }
+local LANDING_STYLE_ART  = { Glow = LANDING_GLOW_NAME, Portrait = LANDING_ANIMATION_NAME }
+-- Glow: twice her footprint (GroundFxScale's 3.0 is one footprint). The
+-- playtest asked for "way bigger" than footprint-sized, and a landing spot is
+-- a target to run toward, not a thing to stand on.
+local LANDING_STYLE_BASE = { Glow = 6.0, Portrait = 0.67 }
 
 -- Which art the landing marker uses right now. Unknown style falls back to
 -- Glow rather than to nothing, so a typo in the .cfg still shows a marker.
@@ -369,8 +386,18 @@ local function registerLandingArt()
             StartFrame = 1,
             Material = "Unlit",
         }
+        local glowOrder = { "Name", "InheritFrom", "GroupName", "Red", "Green", "Blue", "Alpha" }
+        local glowFields = {
+            Name = LANDING_GLOW_NAME,
+            InheritFrom = GROUND_FX,
+            GroupName = "FX_Terrain",
+            Red = 1, Green = 1, Blue = 1,
+            Alpha = 1,
+        }
+        local glowEntry = (sjson.to_object and sjson.to_object(glowFields, glowOrder)) or glowFields
         sjson.hook(animFile, function(data)
             table.insert(data.Animations, entry)
+            table.insert(data.Animations, glowEntry)
         end)
     end)
     if not ok then
@@ -948,6 +975,7 @@ return {
     IDENTIFIER_POLL_INTERVAL = IDENTIFIER_POLL_INTERVAL,
     TELEPORT_RADIUS = TELEPORT_RADIUS,
     LANDING_ANIMATION_NAME = LANDING_ANIMATION_NAME,
+    LANDING_GLOW_NAME = LANDING_GLOW_NAME,
     LANDING_STYLES = LANDING_STYLES,
     LANDING_STYLE_BASE = LANDING_STYLE_BASE,
     GROUND_FX = GROUND_FX,
