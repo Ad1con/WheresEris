@@ -398,7 +398,7 @@ local function registerLandingArt()
             Material = "Unlit",
         }
         local glowOrder = { "Name", "FilePath", "NumFrames", "PlaySpeed", "Loop", "Scale",
-                            "GroupName", "Red", "Green", "Blue", "Alpha",
+                            "GroupName", "Material", "Red", "Green", "Blue", "Alpha",
                             "LocationZFromOwner", "DieWithOwner", "AngleFromOwner", "UseOwnAngle" }
         local glowFields = {
             Name = LANDING_GLOW_NAME,
@@ -408,6 +408,12 @@ local function registerLandingArt()
             Loop = true,
             Scale = 0.33,
             GroupName = "FX_Terrain",
+            -- Without this the sprite is shaded by scene light, and Eris's
+            -- arena is lit red: a white marker came out red through a whole
+            -- fight. Additive sprites skip lighting, which is why the original
+            -- never declared it. 99 vanilla FX_Terrain entries are Unlit --
+            -- LobWarningDecalIris, a where-the-attack-lands decal, among them.
+            Material = "Unlit",
             Red = 1, Green = 1, Blue = 1,
             Alpha = 1,
             LocationZFromOwner = "Ignore",
@@ -765,10 +771,22 @@ local function installHooks(game)
         if marked ~= nil then
             local ok, passes = pcall(game.IsSpawnPointEligible, marked, encounter, currentRoom, args)
             if ok and passes then
+                -- Committed. Retire the watcher NOW: her destination is fixed
+                -- from this call on, but the fly-down weapon runs its descent
+                -- animation for a while yet, and a watcher still polling in
+                -- that window saw the spot she was landing on as occupied and
+                -- moved the marker away from her -- "picks one, then goes to
+                -- another" in the 2026-09-15 playtest. The marker stays put
+                -- until onFlyDown clears it on touchdown.
+                enemy[LANDING_GENERATION_FIELD] = (enemy[LANDING_GENERATION_FIELD] or 0) + 1
                 logAlways(("landing: teleporting to marked spot %s (vanilla would have picked %s)")
                     :format(tostring(marked), tostring(real)))
                 return marked
             end
+            -- Marked spot went bad at the last moment. She goes where vanilla
+            -- says; show that, rather than a marker on a spot she will not use.
+            enemy[LANDING_GENERATION_FIELD] = (enemy[LANDING_GENERATION_FIELD] or 0) + 1
+            moveMarkerTo(game, enemy, real)
         end
 
         if enemy[AIRBORNE_FIELD] then
