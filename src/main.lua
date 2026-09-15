@@ -345,9 +345,12 @@ local LANDING_ANIMATION_NAME = "WheresEris_LandingMarker"
 -- adds to red and comes out pinkish-white -- "still red" from a few feet back.
 -- RealHecate's DESIGN.md reached the same conclusion on Hecate's cyan floor:
 -- additive light can only wash toward white; arithmetic, not a bug. This
--- entry carries the art with the group changed to plain "FX_Terrain"
--- (alpha-blended, the most common terrain group) and the color set to neutral
--- white at full alpha, so the runtime tint IS the drawn color.
+-- entry carries the art under this mod's own name with the color set to
+-- neutral white at full alpha, so the runtime tint IS the drawn color. The
+-- name matters on its own: when the landing glow reused the literal
+-- "ApolloGroundGlow" name alongside the red ground marker, a cyan landing
+-- glow rendered red; with its own name, both tints render. One animation
+-- name, one tint -- treat that as a rule.
 --
 -- It is a COPY of ApolloGroundGlow's definition, not InheritFrom = it. The
 -- first attempt inherited, and the engine logged
@@ -430,7 +433,14 @@ local function registerLandingArt()
             PlaySpeed = 30,
             Loop = true,
             Scale = 0.33,
-            GroupName = "FX_Terrain",
+            -- Additive after all. The plain FX_Terrain group draws UNDER the
+            -- red the Rivals fight lays on the floor: a white marker there came
+            -- out red while, in the same fight, the additive ground glow
+            -- tinted green showed green and the cyan outline showed cyan. So
+            -- the additive group is the one proven to render its tint on that
+            -- floor. The cost is that additive white washes toward pink-white
+            -- on red; saturated colors read as themselves.
+            GroupName = "FX_Terrain_Add",
             -- Without this the sprite is shaded by scene light, and Eris's
             -- arena is lit red: a white marker came out red through a whole
             -- fight. Additive sprites skip lighting, which is why the original

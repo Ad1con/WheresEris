@@ -814,8 +814,15 @@ do
         glowEntry and (tostring(glowEntry.FilePath) .. " / inherit=" .. tostring(glowEntry.InheritFrom)))
   check("18.3c2 with the frame data a copy needs to animate at all",
         glowEntry and glowEntry.NumFrames == 15 and glowEntry.PlaySpeed == 30 and glowEntry.Loop == true)
-  check("18.3d and is NOT additive", glowEntry and glowEntry.GroupName == "FX_Terrain",
+  -- Additive, deliberately: the plain group draws under the red the Rivals
+  -- fight lays on the floor (a white marker came out red), while in the same
+  -- fight the additive ground glow tinted green showed green. The additive
+  -- group is the one proven to render its tint on that floor.
+  check("18.3d and is in the additive terrain group, the one proven to show its tint",
+        glowEntry and glowEntry.GroupName == "FX_Terrain_Add",
         glowEntry and tostring(glowEntry.GroupName))
+  check("18.3d2 under its OWN name -- sharing ApolloGroundGlow's name shared its tint",
+        glowEntry and glowEntry.Name ~= plugin.GROUND_FX)
   check("18.3e and carries no baked tint, so the runtime color is the drawn color",
         glowEntry and glowEntry.Red == 1 and glowEntry.Green == 1 and glowEntry.Blue == 1 and glowEntry.Alpha == 1)
 
