@@ -929,6 +929,106 @@ do
         tostring(eris[plugin.LANDING_SPOT_FIELD]) .. " vs " .. tostring(picked))
 end
 
+-- =============================================================================
+-- 20. The strike marker -- off by default, exact when on, never a flight's
+-- =============================================================================
+local function lastCreated(G, spot)
+  for i = #G.created, 1, -1 do
+    if G.created[i].DestinationId == spot then return G.created[i] end
+  end
+end
+
+do
+  local G, plugin = boot()
+  check("20.1 ships off", plugin.settings.values.StrikeMarker == false)
+  local eris = G.spawnEris()
+  G.DoWeaponFire(eris, { WeaponName = "ErisRelocateStrike" })
+  check("20.2 off: the windup places nothing", eris[plugin.STRIKE_SPOT_FIELD] == nil)
+  check("20.3 off: and nothing is pending", not eris[plugin.STRIKE_PENDING_FIELD])
+end
+
+do
+  local G, plugin = boot({ StrikeMarker = true, StrikeMarkerColor = "Magenta", LandingMarkerColor = "White" })
+  local eris = G.spawnEris()
+  -- One flight first, so the ground marker is attached (the harness attaches
+  -- it on landing, not on spawn) and 20.8 can prove a strike leaves it alone.
+  G.DoWeaponFire(eris, G.flyUpAiData("ErisFlyUp"))
+  G.DoWeaponFire(eris, G.flyDownAiData())
+  G.DoWeaponFire(eris, { WeaponName = "ErisRelocateStrike" })
+  local spot = eris[plugin.STRIKE_SPOT_FIELD]
+  check("20.4 the windup places a strike marker", spot ~= nil)
+  check("20.5 in its own field, not the landing's", eris[plugin.LANDING_SPOT_FIELD] == nil)
+  check("20.6 pending", eris[plugin.STRIKE_PENDING_FIELD] == true)
+  local created = lastCreated(G, spot)
+  check("20.7 drawn with the strike color, not the landing color",
+        created and created.Color and created.Color[1] == 255 and created.Color[2] == 51 and created.Color[3] == 255,
+        created and table.concat(created.Color, ","))
+  check("20.8 the ground marker is untouched -- she is not flying",
+        G.attachedCount(plugin.GROUND_FX, eris.ObjectId) == 1)
+
+  -- The marker must go up BEFORE the windup weapon runs. base() yields for
+  -- the whole 0.5s; placed after it, the marker appears at the instant of the
+  -- teleport. The harness cannot yield, so it records order instead.
+  local markerAt, weaponAt
+  for i, e in ipairs(G.events) do
+    if e.kind == "create" and e.DestinationId == spot and not markerAt then markerAt = i end
+    if e.kind == "weapon" and e.Name == "ErisRelocateStrike" then weaponAt = i end
+  end
+  check("20.8b the strike marker is placed before the windup weapon runs, not after",
+        markerAt ~= nil and weaponAt ~= nil and markerAt < weaponAt,
+        ("marker@%s weapon@%s"):format(tostring(markerAt), tostring(weaponAt)))
+
+  -- The teleport goes where the marker says.
+  local encounter, args = G.flyDownSelectArgs()
+  local picked = G.SelectSpawnPoint(G.CurrentRun.CurrentRoom, eris, encounter, args)
+  check("20.9 the strike teleports to the marked spot", picked == spot, tostring(picked))
+
+  -- And once she has arrived, it is gone.
+  G.DoWeaponFire(eris, { WeaponName = "ErisRelocateStrike2" })
+  check("20.10 the teleporting weapon clears the marker", eris[plugin.STRIKE_SPOT_FIELD] == nil)
+  check("20.11 and the pending flag", not eris[plugin.STRIKE_PENDING_FIELD])
+  check("20.12 and the sprite", G.attachedCount(plugin.CONFIG.landingAnimationName(), spot) == 0)
+end
+
+do
+  -- A marked spot that went bad: vanilla's pick, and the marker shows THAT.
+  local G, plugin = boot({ StrikeMarker = true })
+  local eris = G.spawnEris()
+  G.DoWeaponFire(eris, { WeaponName = "ErisRelocateStrike" })
+  local spot = eris[plugin.STRIKE_SPOT_FIELD]
+  G.blockedLoS[spot] = true
+  local encounter, args = G.flyDownSelectArgs()
+  local picked = G.SelectSpawnPoint(G.CurrentRun.CurrentRoom, eris, encounter, args)
+  check("20.13 a stale strike marker yields to vanilla", picked ~= nil and picked ~= spot, tostring(picked))
+  check("20.14 and moves to where she is actually going", eris[plugin.STRIKE_SPOT_FIELD] == picked)
+end
+
+do
+  -- A teleport with no strike pending is not a strike's to redirect, even with
+  -- a stale strike field lying around.
+  local G, plugin = boot({ StrikeMarker = true })
+  local eris = G.spawnEris()
+  eris[plugin.STRIKE_SPOT_FIELD] = 700001
+  eris[plugin.STRIKE_PENDING_FIELD] = false
+  local encounter, args = G.flyDownSelectArgs()
+  local picked = G.SelectSpawnPoint(G.CurrentRun.CurrentRoom, eris, encounter, args)
+  check("20.15 no windup, no redirect", picked ~= 700001, tostring(picked))
+end
+
+do
+  -- A flight's landing is never treated as a strike, and vice versa: the two
+  -- keep separate fields, and a landing during a (stale) strike flag still
+  -- goes to the LANDING marker.
+  local G, plugin = boot({ StrikeMarker = true })
+  local eris = G.spawnEris()
+  G.DoWeaponFire(eris, G.flyUpAiData("ErisFlyUp"))
+  local landingSpot = eris[plugin.LANDING_SPOT_FIELD]
+  check("20.16 a takeoff does not set a strike marker", eris[plugin.STRIKE_SPOT_FIELD] == nil)
+  local encounter, args = G.flyDownSelectArgs()
+  local picked = G.SelectSpawnPoint(G.CurrentRun.CurrentRoom, eris, encounter, args)
+  check("20.17 and the landing goes to the landing marker", picked == landingSpot)
+end
+
 print(("WheresEris: %d passed, %d failed"):format(passed, failed))
 for _, f in ipairs(failures) do print("  FAIL  " .. f) end
 if failed > 0 then os.exit(1) end

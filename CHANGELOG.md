@@ -7,6 +7,14 @@ version, so the square brackets are load-bearing -- the action looks for
 
 ## [Unreleased]
 
+### Added
+
+- **A strike marker, off by default.** `ErisRelocateStrike` winds up for half a
+  second and then teleports through the same spawn-point call her landing
+  uses, so the same trick applies: mark during the windup, substitute on the
+  teleport. Exact, not a guess. `StrikeMarker = true` to turn it on;
+  `StrikeMarkerColor` defaults to Magenta so it never reads as a landing.
+
 ### Changed
 
 - **The landing marker is a solid white glow, twice her size.** The ground

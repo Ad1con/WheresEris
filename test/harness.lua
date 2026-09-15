@@ -222,6 +222,11 @@ end
 G.weaponFireCalls = {}
 function G.DoWeaponFire(enemy, aiData)
   G.weaponFireCalls[#G.weaponFireCalls + 1] = { enemy = enemy, weaponName = aiData and aiData.WeaponName }
+  -- Into the same event stream as CreateAnimation, so a test can tell whether
+  -- a marker was placed BEFORE or AFTER the weapon ran. The real base() yields
+  -- through the whole attack, so for the strike windup that ordering is the
+  -- difference between a half-second marker and no marker at all.
+  G.events[#G.events + 1] = { kind = "weapon", Name = aiData and aiData.WeaponName }
 end
 
 -- --------------------------------------------------------- ported reals ----

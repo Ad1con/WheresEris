@@ -35,12 +35,14 @@ exit, so changes made while it is running are discarded.
 | `GroundFx` | `true` | Show a colored marker on the ground under Eris while she is standing on it. Hidden while she is airborne. |
 | `GroundFxColor` | `Red` | Color of the ground marker, or `None` to leave the art its own gold-orange. |
 | `GroundFxScale` | `3` | Size of the ground marker. |
+| `StrikeMarker` | `false` | Show the spot Eris will teleport to for her relocating strike, during its half-second windup. Same shape and size as the landing marker, in its own color. |
+| `StrikeMarkerColor` | `Magenta` | Color of the strike marker. |
 | `LandingMarker` | `true` | Show the spot Eris will land on, from takeoff to touchdown. |
 | `LandingMarkerStyle` | `Glow` | `Glow` is a solid ground glow at her destination, twice her size. `Portrait` is her keepsake face on the floor. |
 | `LandingMarkerColor` | `White` | Color of the landing marker. White stands out most against the arena. |
 | `LandingMarkerScale` | `1` | Size of the landing marker. `1` is normal for the chosen style; `2` is twice that. |
 
-**Colors** for `OutlineColor`, `GroundFxColor` and `LandingMarkerColor`:
+**Colors** for `OutlineColor`, `GroundFxColor`, `LandingMarkerColor` and `StrikeMarkerColor`:
 `Amber` `Ember` `Violet` `Gold` `Teal` `Cyan` `Green` `Magenta` `Red` `White`
 
 Red is the default for all three: the strongest available contrast against
