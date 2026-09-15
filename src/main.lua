@@ -56,8 +56,17 @@ local LANDING_SPOT_FIELD = "WheresEris_LandingSpotId"
 
 -- ErisFlyUp_P4 (WeaponData_Eris.lua:1520) is ErisFlyUp with MaxUses = 1, used
 -- on her fourth phase; both stamp aiData.WeaponName with their own key.
-local FLY_UP_WEAPONS = { ErisFlyUp = true, ErisFlyUp_P4 = true }
-local FLY_DOWN_WEAPON = "ErisFlyDown"
+-- ErisRelocate_Up (and _P4) is the SAME maneuver at speed --
+-- Enemy_Eris_FlyUp_Start_Fast / _Fire_Fast -- chaining to ErisRelocate_Down.
+-- Missed in the first build; the 2026-09-15 log showed the ground marker
+-- floating with her through it and no landing marker placed. See DESIGN.md.
+local FLY_UP_WEAPONS = {
+    ErisFlyUp = true, ErisFlyUp_P4 = true,
+    ErisRelocate_Up = true, ErisRelocate_Up_P4 = true,
+}
+local FLY_DOWN_WEAPONS = {
+    ErisFlyDown = true, ErisRelocate_Down = true, ErisRelocate_Down_P4 = true,
+}
 
 -- ErisFlyDown never sets TeleportMaxDistance, so HandleEnemyTeleportation's
 -- own default applies (EnemyAILogic.lua:1105: `aiData.TeleportMaxDistance or
@@ -140,7 +149,7 @@ local settings = {
         -- live: 3.0 (RealHecate's ApolloGroundGlow default) rendered the
         -- 240x240 keepsake-face texture far larger than a character. See
         -- DESIGN.md.
-        LandingMarkerScale = 0.5,
+        LandingMarkerScale = 1.0,
     },
     entries = {},
     file = nil,
@@ -161,7 +170,7 @@ local CONFIG_DESCRIPTIONS = {
 
     LandingMarker = "Show a marker on the spot Eris will land on, from the moment she takes off until she touches down. Always one of the spots the game itself would have picked; see the README for how.",
     LandingMarkerColor = "Tint of the landing marker: Amber, Ember, Violet, Gold, Teal, Cyan, Green, Magenta, Red or White.",
-    LandingMarkerScale = "Size of the landing marker. Starting estimate, not yet confirmed live -- adjust to taste.",
+    LandingMarkerScale = "Size of the landing marker. 1 is about half her footprint.",
 }
 
 local function sectionFor(key)
@@ -593,6 +602,13 @@ function CONFIG.onFlyDown(game, enemy)
     enemy[AIRBORNE_FIELD] = false
     enemy[LANDING_GENERATION_FIELD] = (enemy[LANDING_GENERATION_FIELD] or 0) + 1
 
+    -- She has landed; the marker has done its job. The generation bump above
+    -- retires watchLanding, which was the only other thing that ever cleared
+    -- it -- so without this line the portrait sat on the landing spot for the
+    -- rest of the fight, and LANDING_SPOT_FIELD stayed set, which let later
+    -- teleports be redirected to it. Both seen in the 2026-09-15 log.
+    moveMarkerTo(game, enemy, nil)
+
     if settings.values.GroundFx then
         attachGroundFx(game, enemy)
     end
@@ -635,7 +651,7 @@ local function installHooks(game)
         if FLY_UP_WEAPONS[weaponName] then
             local ok, err = pcall(CONFIG.onFlyUp, game, enemy)
             if not ok then logWarn("fly-up handling failed: " .. tostring(err)) end
-        elseif weaponName == FLY_DOWN_WEAPON then
+        elseif FLY_DOWN_WEAPONS[weaponName] then
             local ok, err = pcall(CONFIG.onFlyDown, game, enemy)
             if not ok then logWarn("fly-down handling failed: " .. tostring(err)) end
         end
@@ -657,7 +673,11 @@ local function installHooks(game)
             return nil
         end
 
-        local marked = enemy[LANDING_SPOT_FIELD]
+        -- Only while she is actually in a tracked flight. Three of her
+        -- weapons pass isFlyDownTeleport (ErisFlyDown, ErisRelocateStrike2,
+        -- ErisRelocate_Down); without this gate a stale marker from an
+        -- earlier flight redirected a later teleport -- twice in one fight.
+        local marked = enemy[AIRBORNE_FIELD] and enemy[LANDING_SPOT_FIELD] or nil
         if marked ~= nil then
             local ok, passes = pcall(game.IsSpawnPointEligible, marked, encounter, currentRoom, args)
             if ok and passes then

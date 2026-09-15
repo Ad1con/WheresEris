@@ -7,6 +7,20 @@ version, so the square brackets are load-bearing -- the action looks for
 
 ## [Unreleased]
 
+### Fixed
+
+- **The landing marker now disappears when Eris lands.** It used to stay on the
+  landing spot for the rest of the fight -- and worse, because it was never
+  cleared, later teleports could be redirected to it: Eris sent to a spot from a
+  flight that ended a minute earlier. Only a landing that follows a takeoff can
+  be redirected now.
+- **Her fast flight is tracked.** `ErisRelocate_Up`/`_Down` is the same
+  maneuver at speed and was missed; the ground marker floated with her through
+  it and no landing marker was placed.
+- **`LandingMarkerScale` defaults to 1.** If your config still says 3 from an
+  earlier build, the marker is drawn three times too large -- the file beats the
+  default, so set it yourself.
+
 First build. Not yet released -- see the repository's `WHERES_ERIS_SPEC.md`
 definition of done for what is still outstanding.
 
