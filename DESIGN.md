@@ -156,8 +156,40 @@ into a file the parent is not in must carry every field itself -- the
 of nothing. `Scale = 0.33` is copied too, so the runtime `Scale` argument means
 the same thing for this marker as for the ground marker.
 
+**And it is `Material = "Unlit"`.** Fourth playtest: the copy rendered, and it
+rendered red. The texture is pure white (sampled: 255/255/255 at center,
+quarter and edge), the tint resolved to White, the entry's own color is
+neutral -- so the red was applied *after* we handed it over. A sprite with no
+`Material` is shaded by scene light, and Eris's arena is lit blood-red. The
+original never declared a material because additive sprites skip lighting;
+the moment it moved to the plain group, the arena painted it. 99 vanilla
+`FX_Terrain` entries are `Unlit`, `LobWarningDecalIris` among them -- a
+where-the-attack-lands decal, which is what this is.
+
 Test 18.3c asserts the entry has a `FilePath` and no `InheritFrom`; 18.3d that
-the group is not additive. Both fail if either is put back.
+the group is not additive; 19.1 that it is unlit. All fail if put back.
+
+## The watcher retires when the landing is committed, not at touchdown
+
+Same playtest: "picks one location, then goes to another and back." The log:
+
+```
+landing: teleporting to marked spot 744609
+landing marker moved: 744609 -> 744610      <- after the landing
+```
+
+`SelectSpawnPoint` fixes her destination early in the fly-down attack. The
+descent animation runs on for a while after. In that window the watcher was
+still polling, saw the spot she was now occupying as ineligible, and moved the
+marker away from her -- as she was visibly arriving. `onFlyDown` then cleared
+it. So the marker was right, then wrong, then gone.
+
+The substitution now bumps the landing generation itself, retiring the watcher
+at the moment her destination is fixed. The marker stays put through the
+descent and `onFlyDown` clears it at touchdown, as before. And if the marked
+spot went bad at the last instant and vanilla's own pick is used, the marker
+moves to *that* spot rather than sitting on one she will not use. Tests
+19.2-19.9; the retire is sabotage-verified (three failures without it).
 
 ## PreferredSpawnPointGroup -- traced and ruled out, not overlooked
 

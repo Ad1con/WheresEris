@@ -867,6 +867,68 @@ do
         tostring(G.attachedCount(plugin.LANDING_ANIMATION_NAME, spot)))
 end
 
+-- =============================================================================
+-- 19. The marker is unlit, and it stops moving once the landing is committed
+-- =============================================================================
+do
+  -- A plain FX_Terrain sprite takes scene light; Eris's arena is lit red, and
+  -- a white marker came out red through a whole fight. Unlit is what vanilla's
+  -- own warning decals use.
+  local _, plugin = boot()
+  local glowEntry
+  for _, e in ipairs(M.animations.Animations) do
+    if e.Name == plugin.LANDING_GLOW_NAME then glowEntry = e end
+  end
+  check("19.1 the landing glow is unlit", glowEntry and glowEntry.Material == "Unlit",
+        glowEntry and tostring(glowEntry.Material))
+end
+
+do
+  -- SelectSpawnPoint commits her destination early in the fly-down attack;
+  -- the descent animation runs on after it. A watcher still polling in that
+  -- window saw the landing spot as occupied and moved the marker away from her
+  -- as she arrived. Committing must retire the watcher.
+  local G, plugin = boot()
+  local eris = G.spawnEris()
+  G.DoWeaponFire(eris, G.flyUpAiData("ErisFlyUp"))
+  local spot = eris[plugin.LANDING_SPOT_FIELD]
+  check("19.2 marker placed (sanity)", spot ~= nil)
+
+  local encounter, args = G.flyDownSelectArgs()
+  local picked = G.SelectSpawnPoint(G.CurrentRun.CurrentRoom, eris, encounter, args)
+  check("19.3 the landing commits to the marked spot", picked == spot, tostring(picked))
+
+  -- Now make that spot ineligible, as it becomes the instant she occupies it,
+  -- and give the watcher every chance to move the marker.
+  G.blockedLoS[spot] = true
+  G.tick(50)
+  check("19.4 the marker does NOT move after the landing is committed",
+        eris[plugin.LANDING_SPOT_FIELD] == spot, tostring(eris[plugin.LANDING_SPOT_FIELD]))
+  check("19.5 and the sprite is still where she is arriving",
+        G.attachedCount(plugin.CONFIG.landingAnimationName(), spot) == 1)
+  check("19.6 because the watcher was retired", G.liveThreadCount() == 0)
+
+  -- Touchdown clears it, as before.
+  G.DoWeaponFire(eris, G.flyDownAiData())
+  check("19.7 touchdown still clears the marker", eris[plugin.LANDING_SPOT_FIELD] == nil)
+end
+
+do
+  -- If the marked spot goes bad at the very last moment, she goes where vanilla
+  -- says -- and the marker should show THAT, not sit on a spot she will not use.
+  local G, plugin = boot()
+  local eris = G.spawnEris()
+  G.DoWeaponFire(eris, G.flyUpAiData("ErisFlyUp"))
+  local spot = eris[plugin.LANDING_SPOT_FIELD]
+  G.blockedLoS[spot] = true             -- bad, but the watcher has not polled yet
+  local encounter, args = G.flyDownSelectArgs()
+  local picked = G.SelectSpawnPoint(G.CurrentRun.CurrentRoom, eris, encounter, args)
+  check("19.8 a stale marker yields to vanilla's pick", picked ~= nil and picked ~= spot, tostring(picked))
+  check("19.9 and the marker moves to where she is actually going",
+        eris[plugin.LANDING_SPOT_FIELD] == picked,
+        tostring(eris[plugin.LANDING_SPOT_FIELD]) .. " vs " .. tostring(picked))
+end
+
 print(("WheresEris: %d passed, %d failed"):format(passed, failed))
 for _, f in ipairs(failures) do print("  FAIL  " .. f) end
 if failed > 0 then os.exit(1) end
