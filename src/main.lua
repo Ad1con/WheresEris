@@ -144,11 +144,16 @@ local settings = {
         OutlineInDreamDives = true,
 
         LandingMarker = true,
-        LandingMarkerColor = "Red",
-        -- Estimated from a 2026-09-09 playtest screenshot, not yet confirmed
-        -- live: 3.0 (RealHecate's ApolloGroundGlow default) rendered the
-        -- 240x240 keepsake-face texture far larger than a character. See
-        -- DESIGN.md.
+        -- Glow: the same ground glow that marks her, at the destination, in a
+        -- contrasting color -- one shape, two colors, "her" and "where she is
+        -- going". Portrait is the keepsake face, kept as an option; a
+        -- 2026-09-15 Rivals playtest found it did not read well on the floor.
+        LandingMarkerStyle = "Glow",
+        -- Cyan against the red-and-orange arena. Red was invisible on it.
+        LandingMarkerColor = "Cyan",
+        -- A multiplier on the style's own tuned size, so 1 is right for either
+        -- art and 2 is twice that. The raw CreateAnimation scale differs per
+        -- style (LANDING_STYLE_BASE), which is why this is not that number.
         LandingMarkerScale = 1.0,
     },
     entries = {},
@@ -169,8 +174,9 @@ local CONFIG_DESCRIPTIONS = {
     OutlineInDreamDives = "Apply this mod's outline in Dream Dives too, on top of vanilla's own. Off leaves Dream runs exactly as the game made them.",
 
     LandingMarker = "Show a marker on the spot Eris will land on, from the moment she takes off until she touches down. Always one of the spots the game itself would have picked; see the README for how.",
-    LandingMarkerColor = "Tint of the landing marker: Amber, Ember, Violet, Gold, Teal, Cyan, Green, Magenta, Red or White.",
-    LandingMarkerScale = "Size of the landing marker. 1 is about half her footprint.",
+    LandingMarkerStyle = "What the landing marker looks like. Glow: the same ground glow that marks her, in the landing color. Portrait: Eris's keepsake face on the floor.",
+    LandingMarkerColor = "Color of the landing marker: Amber, Ember, Violet, Gold, Teal, Cyan, Green, Magenta, Red or White. Cyan stands out against the arena.",
+    LandingMarkerScale = "Size of the landing marker. 1 is the normal size for the chosen style; 2 is twice that.",
 }
 
 local function sectionFor(key)
@@ -306,6 +312,32 @@ local GROUND_FX = "ApolloGroundGlow"
 -- for the technique and its one open risk (confirmed for CreateScreenComponent,
 -- not yet for CreateAnimation in the 3D world).
 local LANDING_ANIMATION_NAME = "WheresEris_LandingMarker"
+
+-- One art per style, and the raw CreateAnimation scale that LandingMarkerScale
+-- = 1 maps to. ApolloGroundGlow reads as her footprint at 3.0 (GroundFxScale's
+-- own default). The 240x240 keepsake face reads right at about 0.67 -- two
+-- thirds of the 1.0 a playtest found already too large.
+local LANDING_STYLES = { "Glow", "Portrait" }
+local LANDING_STYLE_ART  = { Glow = GROUND_FX, Portrait = LANDING_ANIMATION_NAME }
+local LANDING_STYLE_BASE = { Glow = 3.0, Portrait = 0.67 }
+
+-- Which art the landing marker uses right now. Unknown style falls back to
+-- Glow rather than to nothing, so a typo in the .cfg still shows a marker.
+function CONFIG.landingStyle()
+    local style = settings.values.LandingMarkerStyle
+    if LANDING_STYLE_ART[style] == nil then return "Glow" end
+    return style
+end
+
+function CONFIG.landingAnimationName()
+    return LANDING_STYLE_ART[CONFIG.landingStyle()]
+end
+
+function CONFIG.landingRawScale()
+    local style = CONFIG.landingStyle()
+    local mult = clamp(settings.values.LandingMarkerScale, 0.1, 12.0, 1.0)
+    return mult * LANDING_STYLE_BASE[style]
+end
 local LANDING_TEXTURE_PATH = [[GUI\Screens\AwardMenu\KeepsakeMaxGift\KeepsakeMaxGift_big\Eris]]
 local LANDING_ANIMATIONS_FILE = "Game/Animations/GUI_Screens_VFX.sjson"
 
@@ -521,9 +553,9 @@ end
 
 local function attachLandingMarker(game, spotId)
     local args = {
-        Name = LANDING_ANIMATION_NAME,
+        Name = CONFIG.landingAnimationName(),
         DestinationId = spotId,
-        Scale = clamp(settings.values.LandingMarkerScale, 0.1, 12.0, 3.0),
+        Scale = CONFIG.landingRawScale(),
         Color = CONFIG.resolvedLandingColor(),
     }
     game.CreateAnimation(args)
@@ -531,11 +563,15 @@ end
 
 local function detachLandingMarker(game, spotId)
     if spotId == nil then return end
-    game.StopAnimation({
-        Name = LANDING_ANIMATION_NAME,
-        DestinationId = spotId,
-        IncludeCreatedAnimations = true,
-    })
+    -- Both arts, not just the current one: the style can change mid-flight
+    -- from the panel, and stopping an animation that is not there is free.
+    for _, name in pairs(LANDING_STYLE_ART) do
+        game.StopAnimation({
+            Name = name,
+            DestinationId = spotId,
+            IncludeCreatedAnimations = true,
+        })
+    end
 end
 
 local function moveMarkerTo(game, enemy, newSpot)
@@ -687,8 +723,14 @@ local function installHooks(game)
             end
         end
 
-        -- Tracked spot missing or stale -- fall back to vanilla's real pick.
-        logAlways(("landing: marker was stale, teleporting to vanilla's own pick %s"):format(tostring(real)))
+        if enemy[AIRBORNE_FIELD] then
+            -- She is in a tracked flight but the spot went bad -- rare.
+            logAlways(("landing: marker was stale, teleporting to vanilla's own pick %s"):format(tostring(real)))
+        else
+            -- A teleport this mod never marked (RelocateStrike2 and the like).
+            -- Vanilla's pick, untouched -- exactly right, and not a fault.
+            logAlways(("teleport (not a marked landing): vanilla's own pick %s"):format(tostring(real)))
+        end
         return real
     end)
 
@@ -772,6 +814,7 @@ local function renderWindow()
             imgui.Separator()
             imgui.Text("Landing marker")
             checkSetting(imgui, "LandingMarker", "Show where she will land")
+            comboSetting(imgui, "LandingMarkerStyle", LANDING_STYLES, "Landing marker style")
             comboSetting(imgui, "LandingMarkerColor", CONFIG.colorOrder, "Landing marker color")
             sliderSetting(imgui, "LandingMarkerScale", "Landing marker size", 0.1, 12.0)
 
@@ -905,6 +948,8 @@ return {
     IDENTIFIER_POLL_INTERVAL = IDENTIFIER_POLL_INTERVAL,
     TELEPORT_RADIUS = TELEPORT_RADIUS,
     LANDING_ANIMATION_NAME = LANDING_ANIMATION_NAME,
+    LANDING_STYLES = LANDING_STYLES,
+    LANDING_STYLE_BASE = LANDING_STYLE_BASE,
     GROUND_FX = GROUND_FX,
     MARKED_FIELD = MARKED_FIELD,
     LANDING_SPOT_FIELD = LANDING_SPOT_FIELD,

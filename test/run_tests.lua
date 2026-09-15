@@ -77,8 +77,11 @@ do
   check("1.3 ships the ground marker on, Red, scale 3.0",
         at(v, "GroundFx") == true and at(v, "GroundFxColor") == "Red" and at(v, "GroundFxScale") == 3.0)
   check("1.4 ships OutlineInDreamDives on", at(v, "OutlineInDreamDives") == true)
-  check("1.5 ships the landing marker on, Red",
-        at(v, "LandingMarker") == true and at(v, "LandingMarkerColor") == "Red")
+  check("1.5 ships the landing marker on, as a Cyan glow",
+        at(v, "LandingMarker") == true and at(v, "LandingMarkerColor") == "Cyan"
+        and at(v, "LandingMarkerStyle") == "Glow",
+        ("%s/%s/%s"):format(tostring(at(v, "LandingMarker")), tostring(at(v, "LandingMarkerColor")),
+                            tostring(at(v, "LandingMarkerStyle"))))
   check("1.6 settings persist when rom.config is available",
         at(at(plugin, "settings"), "persistent") == true)
   check("1.7 exactly three functions are wrapped, once each",
@@ -240,7 +243,7 @@ do
   check("5.2 the picked spot passes the REAL IsSpawnPointEligible",
         spot ~= nil and G.IsSpawnPointEligible(spot, encounter, G.CurrentRun.CurrentRoom, args) == true)
   check("5.3 the marker sprite was actually created there",
-        G.attachedCount(plugin.LANDING_ANIMATION_NAME, spot) == 1)
+        G.attachedCount(plugin.CONFIG.landingAnimationName(), spot) == 1)
 end
 
 -- =============================================================================
@@ -276,8 +279,8 @@ do
   check("6.4 the new spot is ALSO really eligible",
         after ~= nil and G.IsSpawnPointEligible(after, encounter, G.CurrentRun.CurrentRoom, args) == true)
   check("6.5 the old marker was detached and the new one created",
-        G.attachedCount(plugin.LANDING_ANIMATION_NAME, before) == 0
-        and G.attachedCount(plugin.LANDING_ANIMATION_NAME, after) == 1)
+        G.attachedCount(plugin.CONFIG.landingAnimationName(), before) == 0
+        and G.attachedCount(plugin.CONFIG.landingAnimationName(), after) == 1)
 end
 
 -- =============================================================================
@@ -482,12 +485,12 @@ do
   check("11.4 landing clears the marker", eris[plugin.LANDING_SPOT_FIELD] == nil,
         tostring(eris[plugin.LANDING_SPOT_FIELD]))
   check("11.5 and the sprite is gone from the landing spot",
-        G.attachedCount(plugin.LANDING_ANIMATION_NAME, landedSpot) == 0,
-        tostring(G.attachedCount(plugin.LANDING_ANIMATION_NAME, landedSpot)))
+        G.attachedCount(plugin.CONFIG.landingAnimationName(), landedSpot) == 0,
+        tostring(G.attachedCount(plugin.CONFIG.landingAnimationName(), landedSpot)))
   -- Nothing anywhere: walk every spawn point, not just the one she used.
   local anywhere = 0
   for _, id in ipairs(G.MapState.SpawnPoints) do
-    anywhere = anywhere + G.attachedCount(plugin.LANDING_ANIMATION_NAME, id)
+    anywhere = anywhere + G.attachedCount(plugin.CONFIG.landingAnimationName(), id)
   end
   check("11.6 nothing is attached at any spawn point", anywhere == 0, tostring(anywhere))
   -- The watcher notices the generation bump on its next resume, not before.
@@ -775,6 +778,69 @@ do
   local drew = false
   for _, l in ipairs(M.labels) do if tostring(l):find("Begin:", 1, true) then drew = true end end
   check("14.24 and now the window is submitted", drew == true)
+end
+
+-- =============================================================================
+-- 18. Landing marker style -- glow by default, portrait kept as an option
+-- =============================================================================
+-- A 2026-09-15 Rivals playtest found the keepsake face did not read well on
+-- the arena floor. The glow -- the same art that marks her, in a contrasting
+-- color -- is the default now; the portrait stays behind a setting.
+do
+  local G, plugin = boot()
+  check("18.1 default style is Glow", plugin.CONFIG.landingStyle() == "Glow")
+  check("18.2 which is the same art as the ground marker",
+        plugin.CONFIG.landingAnimationName() == plugin.GROUND_FX)
+  check("18.3 at scale 1 it draws at the glow's footprint size (3.0)",
+        math.abs(plugin.CONFIG.landingRawScale() - 3.0) < 1e-9,
+        tostring(plugin.CONFIG.landingRawScale()))
+
+  local eris = G.spawnEris()
+  G.DoWeaponFire(eris, G.flyUpAiData("ErisFlyUp"))
+  local spot = eris[plugin.LANDING_SPOT_FIELD]
+  check("18.4 the glow is attached at the landing spot",
+        G.attachedCount(plugin.GROUND_FX, spot) == 1)
+  check("18.5 and NOT the portrait",
+        G.attachedCount(plugin.LANDING_ANIMATION_NAME, spot) == 0)
+end
+
+do
+  local G, plugin = boot({ LandingMarkerStyle = "Portrait" })
+  check("18.6 Portrait selects the keepsake face",
+        plugin.CONFIG.landingAnimationName() == plugin.LANDING_ANIMATION_NAME)
+  check("18.7 at scale 1 it draws at two thirds of the old default (0.67)",
+        math.abs(plugin.CONFIG.landingRawScale() - 0.67) < 1e-9,
+        tostring(plugin.CONFIG.landingRawScale()))
+  local eris = G.spawnEris()
+  G.DoWeaponFire(eris, G.flyUpAiData("ErisFlyUp"))
+  local spot = eris[plugin.LANDING_SPOT_FIELD]
+  check("18.8 the portrait is attached at the landing spot",
+        G.attachedCount(plugin.LANDING_ANIMATION_NAME, spot) == 1)
+  -- The scale is a multiplier on the style's base, so 2 means twice normal
+  -- for whichever art is chosen.
+  plugin.settings.values.LandingMarkerScale = 2
+  check("18.9 scale 2 doubles the style's base", math.abs(plugin.CONFIG.landingRawScale() - 1.34) < 1e-9)
+end
+
+do
+  -- A typo in the .cfg must still show a marker, not nothing.
+  local _, plugin = boot({ LandingMarkerStyle = "Bogus" })
+  check("18.10 an unknown style falls back to Glow", plugin.CONFIG.landingStyle() == "Glow")
+end
+
+do
+  -- Switch styles mid-flight from the panel: detach must clear whichever art
+  -- was placed, not just the one now selected.
+  local G, plugin = boot({ LandingMarkerStyle = "Portrait" })
+  local eris = G.spawnEris()
+  G.DoWeaponFire(eris, G.flyUpAiData("ErisFlyUp"))
+  local spot = eris[plugin.LANDING_SPOT_FIELD]
+  check("18.11 portrait placed", G.attachedCount(plugin.LANDING_ANIMATION_NAME, spot) == 1)
+  plugin.settings.values.LandingMarkerStyle = "Glow"
+  G.DoWeaponFire(eris, G.flyDownAiData())
+  check("18.12 landing after a style switch still removes the portrait",
+        G.attachedCount(plugin.LANDING_ANIMATION_NAME, spot) == 0,
+        tostring(G.attachedCount(plugin.LANDING_ANIMATION_NAME, spot)))
 end
 
 print(("WheresEris: %d passed, %d failed"):format(passed, failed))
