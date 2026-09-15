@@ -7,6 +7,20 @@ version, so the square brackets are load-bearing -- the action looks for
 
 ## [Unreleased]
 
+### Changed
+
+- **The landing marker is a glow now, cyan by default.** The same ground glow
+  that marks her, at the spot she is heading for, in a color that stands out
+  against the arena -- one shape, two colors, "her" and "where she is going".
+  The keepsake portrait is kept as `LandingMarkerStyle = Portrait`, drawn at two
+  thirds of its previous size.
+- **`LandingMarkerScale` is a multiplier on the style's own normal size.** 1 is
+  right for either art, 2 is twice that. If your config still says `Red` for
+  `LandingMarkerColor` from an earlier build, the file beats the default -- set
+  it to `Cyan` yourself, or pick any color you like.
+- Teleports this mod never marked now log as `teleport (not a marked landing)`
+  rather than `marker was stale`, which read as a fault when nothing was wrong.
+
 ### Fixed
 
 - **The landing marker now disappears when Eris lands.** It used to stay on the

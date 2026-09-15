@@ -36,8 +36,9 @@ exit, so changes made while it is running are discarded.
 | `GroundFxColor` | `Red` | Color of the ground marker, or `None` to leave the art its own gold-orange. |
 | `GroundFxScale` | `3` | Size of the ground marker. |
 | `LandingMarker` | `true` | Show the spot Eris will land on, from takeoff to touchdown. |
-| `LandingMarkerColor` | `Red` | Tint of the landing marker. |
-| `LandingMarkerScale` | `0.5` | Size of the landing marker. A starting estimate; adjust to taste. |
+| `LandingMarkerStyle` | `Glow` | `Glow` is the same ground glow that marks her, at her destination. `Portrait` is her keepsake face on the floor. |
+| `LandingMarkerColor` | `Cyan` | Color of the landing marker. Cyan stands out against the arena. |
+| `LandingMarkerScale` | `1` | Size of the landing marker. `1` is normal for the chosen style; `2` is twice that. |
 
 **Colors** for `OutlineColor`, `GroundFxColor` and `LandingMarkerColor`:
 `Amber` `Ember` `Violet` `Gold` `Teal` `Cyan` `Green` `Magenta` `Red` `White`
@@ -77,8 +78,8 @@ the fight it happened in.
 
 Hades II is by [Supergiant Games](https://www.supergiantgames.com/). This is
 an unofficial fan mod, not endorsed by or affiliated with them. The mod icon
-is a cropped in-game portrait, and the landing marker reuses her own keepsake
-face from the game's award screen, unaltered.
+is a cropped in-game portrait, and the `Portrait` landing marker reuses her own
+keepsake face from the game's award screen, unaltered.
 
 Built on [ReturnOfModding / Hell2Modding](https://github.com/SGG-Modding).
 This mod cannot load without `LuaENVY-ENVY`, `SGG_Modding-ModUtil`,
