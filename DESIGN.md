@@ -166,8 +166,28 @@ the moment it moved to the plain group, the arena painted it. 99 vanilla
 `FX_Terrain` entries are `Unlit`, `LobWarningDecalIris` among them -- a
 where-the-attack-lands decal, which is what this is.
 
-Test 18.3c asserts the entry has a `FilePath` and no `InheritFrom`; 18.3d that
-the group is not additive; 19.1 that it is unlit. All fail if put back.
+Test 18.3c asserts the entry has a `FilePath` and no `InheritFrom`; 19.1 that
+it is unlit. Both fail if put back.
+
+**And then back to additive after all.** Fifth Rivals playtest, with three
+colors on three render paths to isolate the fault: `OutlineColor = Cyan`
+showed cyan, `GroundFxColor = Green` (additive `ApolloGroundGlow`) showed
+green, `LandingMarkerColor = White` (plain `FX_Terrain`, unlit) showed red.
+Same fight, same floor. So the arena is not grading the scene -- two paths
+rendered their tint -- and the plain group is simply drawn UNDER the red the
+Rivals fight lays on the floor, while the additive group draws over it.
+`WheresEris_LandingGlow` is `FX_Terrain_Add` again, under its own name,
+neutral, unlit. The cost the first attempt worried about is real but
+smaller: additive white washes toward pink-white on red; saturated colors
+read as themselves, as the green proved. 18.3d now asserts the additive group.
+
+Which also reframes the very first failure. When the landing glow reused the
+literal `ApolloGroundGlow` name alongside the red ground marker, a cyan landing
+glow rendered red; under its own name, both render. The most economical
+reading is that the engine holds one tint per animation *name*, and the
+red one won. Not proven, but consistent with every fight since, and cheap to
+respect: **one animation name, one tint.** 18.3d2 asserts the name is the
+mod's own.
 
 ## The watcher retires when the landing is committed, not at touchdown
 
