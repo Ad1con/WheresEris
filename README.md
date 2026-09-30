@@ -76,6 +76,14 @@ Modifies no game files. It wraps three functions -- `SetupUnit`,
 with the game. Nothing is written to your save, and nothing here reaches past
 the fight it happened in.
 
+## AI usage
+
+All of the code in this mod was written by Claude, Anthropic's AI model,
+under Adicon's direction. The design, every decision about what it should
+and shouldn't do, and the in-game testing and tuning are Adicon's.
+No AI-generated art is used: the icon and all art come from the game's own
+files.
+
 ## Credits
 
 Hades II is by [Supergiant Games](https://www.supergiantgames.com/). This is
