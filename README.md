@@ -91,4 +91,4 @@ are all theirs.
 
 Thank you to the Hades Modding community. Your work is astounding.
 
-Built by Adicon, with Claude.
+Designed, tested and directed by **Adicon**, code written with Claude.
